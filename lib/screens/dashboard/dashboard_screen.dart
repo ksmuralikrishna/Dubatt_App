@@ -66,7 +66,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Future<void> _loadRecentRecords() async {
     try {
       final res = await http.get(
-        Uri.parse('${kBaseUrl}/receiving-lots?per_page=5&sort=created_at&order=desc'),
+        Uri.parse('${kBaseUrl}/receivings?per_page=5&sort=created_at&order=desc'),
         headers: {
           'Accept': 'application/json',
           'Authorization': 'Bearer ${AuthService().token}',
@@ -650,19 +650,22 @@ class _RecentTable extends StatelessWidget {
             ...records.asMap().entries.map((e) {
               final r = e.value;
               final isLast = e.key == records.length - 1;
-              final lotNo    = r['lot_no']        ?? '—';
-              final date     = r['doc_date']      ?? '—';
-              final material = r['material_name'] ?? '—';
-              final qty      = r['quantity']      ?? '—';
-              final supplier = r['supplier']      ?? '—';
-              final status   = r['status']        ?? 'draft';
+              final lotNo    = r['lot_no']?.toString() ?? '—';
+              final date     = r['receipt_date']?.toString() ?? '—';         // ✅ was doc_date
+              final material = (r['material'] as Map?)?['material_name']     // ✅ nested object
+                  ?.toString() ?? '—';
+              final qty      = r['received_qty']?.toString() ?? '—';         // ✅ was quantity
+              final unit     = r['unit']?.toString() ?? '';
+              final supplier = (r['supplier'] as Map?)?['supplier_name']     // ✅ nested object
+                  ?.toString() ?? '—';
+              final status   = r['status_label']?.toString() ?? 'Pending';   // ✅ was status
 
               final cells = isTablet
                   ? [
                 _DataCell(text: lotNo, bold: true),
                 _DataCell(text: _fmtDate(date)),
                 _DataCell(text: material),
-                _DataCell(text: '$qty', align: TextAlign.right),
+                _DataCell(text: '$qty $unit', align: TextAlign.right),  // ✅ shows "123.00 KG"
                 _DataCell(text: supplier),
                 _BadgeCell(status: status),
               ]
@@ -691,10 +694,9 @@ class _RecentTable extends StatelessWidget {
 
   String _fmtDate(String raw) {
     try {
-      final d = DateTime.parse(raw);
-      return DateFormat('dd/MM/yyyy').format(d);
+      return DateFormat('dd/MM/yyyy').format(DateTime.parse(raw)); // ✅ handles ISO fine
     } catch (_) {
-      return raw;
+      return raw.length >= 10 ? raw.substring(0, 10) : raw;
     }
   }
 }
@@ -747,14 +749,35 @@ class _DataCell extends StatelessWidget {
 }
 
 class _BadgeCell extends StatelessWidget {
-  final String status;
+  final String status;   // now receives "Pending", "Approved", "In Progress"
   const _BadgeCell({required this.status});
 
   @override
   Widget build(BuildContext context) {
+    Color bg, fg;
+    switch (status.toLowerCase()) {
+      case 'approved':
+        bg = const Color(0xFFDCFCE7); fg = const Color(0xFF16A34A); break;
+      case 'in progress':
+        bg = const Color(0xFFFEF9C3); fg = const Color(0xFFCA8A04); break;
+      case 'pending':
+      default:
+        bg = const Color(0xFFF1F5F9); fg = AppColors.textMuted;
+    }
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      child: MesStatusBadge(status: status),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+        decoration: BoxDecoration(
+          color: bg, borderRadius: BorderRadius.circular(20),
+        ),
+        child: Text(
+          status,
+          style: GoogleFonts.outfit(
+            fontSize: 11, fontWeight: FontWeight.w600, color: fg,
+          ),
+        ),
+      ),
     );
   }
 }

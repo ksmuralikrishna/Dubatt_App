@@ -22,20 +22,21 @@ class _ReceivingListScreenState extends State<ReceivingListScreen> {
   Timer? _debounce;
 
   List<ReceivingSummary> _records = [];
-  bool _isLoading   = true;
+  bool _isLoading  = true;
   String? _errorMsg;
-  int _total        = 0;
-  int _currentPage  = 1;
+  int _total       = 0;
+  int _currentPage = 1;
   static const _perPage = 20;
 
   String _statusFilter = 'all';
-  String _sortBy       = 'created_at';
+  String _sortBy       = 'receipt_date';  // ✅ matches API field
   String _sortOrder    = 'desc';
 
   final _statusOptions = const [
-    {'value': 'all',       'label': 'All Status'},
-    {'value': 'draft',     'label': 'Draft'},
-    {'value': 'submitted', 'label': 'Submitted'},
+    {'value': 'all',         'label': 'All Status'},
+    {'value': 'pending',     'label': 'Pending'},
+    {'value': 'approved',    'label': 'Approved'},
+    {'value': 'in_progress', 'label': 'In Progress'},
   ];
 
   @override
@@ -93,7 +94,7 @@ class _ReceivingListScreenState extends State<ReceivingListScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final hPad    = Responsive.hPad(context);
+    final hPad     = Responsive.hPad(context);
     final isTablet = Responsive.isTablet(context);
 
     return AppShell(
@@ -101,7 +102,6 @@ class _ReceivingListScreenState extends State<ReceivingListScreen> {
       onLogout: widget.onLogout,
       child: Column(
         children: [
-          // ── Scrollable content
           Expanded(
             child: SingleChildScrollView(
               padding: EdgeInsets.fromLTRB(hPad, 28, hPad, 24),
@@ -111,20 +111,20 @@ class _ReceivingListScreenState extends State<ReceivingListScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
 
-                    // Page header
+                    // ── Page header
                     MesPageHeader(
                       title: 'Receiving',
                       subtitle: 'Manage and track all incoming material lots',
                       actions: [
                         MesButton(
-                          label: '+ Create New',
+                          label: 'Create New',
                           icon: Icons.add,
                           onPressed: () => _openForm(),
                         ),
                       ],
                     ),
 
-                    // Search + filter bar
+                    // ── Search + filter bar
                     MesCard(
                       padding: const EdgeInsets.all(14),
                       child: isTablet
@@ -136,7 +136,7 @@ class _ReceivingListScreenState extends State<ReceivingListScreen> {
                     ),
                     const SizedBox(height: 10),
 
-                    // Count + clear
+                    // ── Count + clear
                     _CountBar(
                       total: _total,
                       hasFilters: _searchCtrl.text.isNotEmpty || _statusFilter != 'all',
@@ -148,7 +148,7 @@ class _ReceivingListScreenState extends State<ReceivingListScreen> {
                     ),
                     const SizedBox(height: 10),
 
-                    // Table card
+                    // ── Table card
                     MesCard(
                       padding: EdgeInsets.zero,
                       child: Column(
@@ -172,7 +172,7 @@ class _ReceivingListScreenState extends State<ReceivingListScreen> {
                                 if (_sortBy == col) {
                                   _sortOrder = _sortOrder == 'asc' ? 'desc' : 'asc';
                                 } else {
-                                  _sortBy = col;
+                                  _sortBy    = col;
                                   _sortOrder = 'desc';
                                 }
                               });
@@ -181,7 +181,7 @@ class _ReceivingListScreenState extends State<ReceivingListScreen> {
                             onEdit: (id) => _openForm(id: id),
                           ),
 
-                          // Pagination
+                          // ── Pagination
                           if (!_isLoading && _records.isNotEmpty)
                             _Pagination(
                               currentPage: _currentPage,
@@ -236,7 +236,7 @@ class _ReceivingListScreenState extends State<ReceivingListScreen> {
     );
 
     final statusDrop = SizedBox(
-      width: isTablet ? 160 : double.infinity,
+      width: isTablet ? 170 : double.infinity,
       child: DropdownButtonFormField<String>(
         value: _statusFilter,
         style: GoogleFonts.outfit(fontSize: 13, color: AppColors.textDark),
@@ -256,8 +256,7 @@ class _ReceivingListScreenState extends State<ReceivingListScreen> {
         items: _statusOptions
             .map((o) => DropdownMenuItem(
           value: o['value'],
-          child: Text(o['label']!,
-              style: GoogleFonts.outfit(fontSize: 13)),
+          child: Text(o['label']!, style: GoogleFonts.outfit(fontSize: 13)),
         ))
             .toList(),
         onChanged: (v) {
@@ -282,14 +281,20 @@ class _CountBar extends StatelessWidget {
   final bool hasFilters;
   final VoidCallback onClear;
 
-  const _CountBar({required this.total, required this.hasFilters, required this.onClear});
+  const _CountBar({
+    required this.total,
+    required this.hasFilters,
+    required this.onClear,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Text('Showing $total record${total == 1 ? '' : 's'}',
-            style: AppTextStyles.caption()),
+        Text(
+          'Showing $total record${total == 1 ? '' : 's'}',
+          style: AppTextStyles.caption(),
+        ),
         const Spacer(),
         if (hasFilters)
           TextButton(
@@ -307,26 +312,28 @@ class _CountBar extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────
-// Records table
-// Uses LayoutBuilder + fixed column widths so
-// Expanded never runs inside unbounded width
+// Column width constants
 // ─────────────────────────────────────────────
 
-// Tablet column widths
-const double _tLotNo    = 150;
-const double _tDate     = 110;
-const double _tCategory = 120;
-const double _tSupplier = 160;
-const double _tQty      = 120;
-const double _tStatus   = 100;
-const double _tActions  = 80;
+// Tablet
+const double _tLotNo    = 140.0;
+const double _tDate     = 110.0;
+const double _tMaterial = 160.0;
+const double _tSupplier = 160.0;
+const double _tQty      = 110.0;
+const double _tUnit     = 70.0;
+const double _tStatus   = 120.0;
+const double _tActions  = 80.0;
 
-// Mobile column widths
-const double _mLotNo   = 140;
-const double _mDate    = 110;
-const double _mStatus  = 100;
-const double _mActions = 70;
+// Mobile
+const double _mLotNo    = 140.0;
+const double _mDate     = 110.0;
+const double _mStatus   = 120.0;
+const double _mActions  = 70.0;
 
+// ─────────────────────────────────────────────
+// Records table
+// ─────────────────────────────────────────────
 class _RecordsTable extends StatelessWidget {
   final List<ReceivingSummary> records;
   final bool isTablet;
@@ -344,13 +351,13 @@ class _RecordsTable extends StatelessWidget {
   });
 
   double get _tableWidth => isTablet
-      ? _tLotNo + _tDate + _tCategory + _tSupplier + _tQty + _tStatus + _tActions
+      ? _tLotNo + _tDate + _tMaterial + _tSupplier + _tQty + _tUnit + _tStatus + _tActions
       : _mLotNo + _mDate + _mStatus + _mActions;
 
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(builder: (context, constraints) {
-      final available = constraints.maxWidth;
+      final available  = constraints.maxWidth;
       final needsScroll = _tableWidth > available;
 
       Widget content = Column(
@@ -380,6 +387,9 @@ class _RecordsTable extends StatelessWidget {
   }
 }
 
+// ─────────────────────────────────────────────
+// Table header
+// ─────────────────────────────────────────────
 class _TableHeader extends StatelessWidget {
   final bool isTablet;
   final double tableWidth;
@@ -402,23 +412,25 @@ class _TableHeader extends StatelessWidget {
         color: AppColors.greenLight,
         border: Border(bottom: BorderSide(color: AppColors.border, width: 2)),
         borderRadius: BorderRadius.only(
-          topLeft: Radius.circular(14), topRight: Radius.circular(14),
+          topLeft: Radius.circular(14),
+          topRight: Radius.circular(14),
         ),
       ),
       child: Row(
         children: isTablet
             ? [
-          _hCell('Lot No',    _tLotNo,    key: 'lot_no',   sortable: true),
-          _hCell('Date',      _tDate,     key: 'doc_date', sortable: true),
-          _hCell('Category',  _tCategory),
-          _hCell('Supplier',  _tSupplier),
-          _hCell('Qty',       _tQty,      right: true),
-          _hCell('Status',    _tStatus),
-          _hCell('Actions',   _tActions,  center: true),
+          _hCell('Lot No',   _tLotNo,    key: 'lot_no',       sortable: true),
+          _hCell('Date',     _tDate,     key: 'receipt_date', sortable: true),
+          _hCell('Material', _tMaterial),
+          _hCell('Supplier', _tSupplier),
+          _hCell('Recv Qty', _tQty,    right: true),
+          _hCell('Unit',     _tUnit,   center: true),
+          _hCell('Status',   _tStatus),
+          _hCell('Actions',  _tActions, center: true),
         ]
             : [
-          _hCell('Lot No',  _mLotNo,   key: 'lot_no',  sortable: true),
-          _hCell('Date',    _mDate,    key: 'doc_date', sortable: true),
+          _hCell('Lot No',  _mLotNo,  key: 'lot_no',       sortable: true),
+          _hCell('Date',    _mDate,   key: 'receipt_date', sortable: true),
           _hCell('Status',  _mStatus),
           _hCell('Actions', _mActions, center: true),
         ],
@@ -426,10 +438,14 @@ class _TableHeader extends StatelessWidget {
     );
   }
 
-  Widget _hCell(String label, double width, {
-    String key = '', bool sortable = false,
-    bool right = false, bool center = false,
-  }) {
+  Widget _hCell(
+      String label,
+      double width, {
+        String key = '',
+        bool sortable = false,
+        bool right = false,
+        bool center = false,
+      }) {
     return GestureDetector(
       onTap: sortable ? () => onSort(key) : null,
       child: SizedBox(
@@ -443,8 +459,10 @@ class _TableHeader extends StatelessWidget {
                 ? MainAxisAlignment.end
                 : MainAxisAlignment.start,
             children: [
-              Text(label.toUpperCase(),
-                  style: AppTextStyles.label(color: AppColors.green)),
+              Text(
+                label.toUpperCase(),
+                style: AppTextStyles.label(color: AppColors.green),
+              ),
               if (sortable) ...[
                 const SizedBox(width: 4),
                 Icon(
@@ -465,6 +483,9 @@ class _TableHeader extends StatelessWidget {
   }
 }
 
+// ─────────────────────────────────────────────
+// Table row
+// ─────────────────────────────────────────────
 class _TableRow extends StatefulWidget {
   final ReceivingSummary record;
   final bool isTablet, isLast;
@@ -486,9 +507,47 @@ class _TableRow extends StatefulWidget {
 class _TableRowState extends State<_TableRow> {
   bool _hovered = false;
 
+  // Formats ISO date string → dd/MM/yyyy
   String _fmtDate(String raw) {
-    try { return DateFormat('dd/MM/yyyy').format(DateTime.parse(raw)); }
-    catch (_) { return raw.length > 10 ? raw.substring(0, 10) : raw; }
+    try {
+      return DateFormat('dd/MM/yyyy').format(DateTime.parse(raw));
+    } catch (_) {
+      return raw.length >= 10 ? raw.substring(0, 10) : raw;
+    }
+  }
+
+  // Status badge using statusLabel from API ("Pending", "Approved", "In Progress")
+  Widget _statusBadge(String label) {
+    Color bg, fg;
+    switch (label.toLowerCase()) {
+      case 'approved':
+        bg = const Color(0xFFDCFCE7);
+        fg = const Color(0xFF16A34A);
+        break;
+      case 'in progress':
+        bg = const Color(0xFFFEF9C3);
+        fg = const Color(0xFFCA8A04);
+        break;
+      case 'pending':
+      default:
+        bg = const Color(0xFFF1F5F9);
+        fg = AppColors.textMuted;
+    }
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(
+        label,
+        style: GoogleFonts.outfit(
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+          color: fg,
+        ),
+      ),
+    );
   }
 
   @override
@@ -496,7 +555,12 @@ class _TableRowState extends State<_TableRow> {
     final r   = widget.record;
     final fmt = NumberFormat('#,##0.00');
 
-    Widget cell(double width, Widget child, {bool right = false, bool center = false}) {
+    Widget cell(
+        double width,
+        Widget child, {
+          bool right = false,
+          bool center = false,
+        }) {
       return SizedBox(
         width: width,
         child: Padding(
@@ -540,17 +604,18 @@ class _TableRowState extends State<_TableRow> {
           children: widget.isTablet
               ? [
             cell(_tLotNo,    _lotNoWidget(r)),
-            cell(_tDate,     txt(_fmtDate(r.docDate), muted: true)),
-            cell(_tCategory, txt(r.category)),
-            cell(_tSupplier, txt(r.supplier)),
-            cell(_tQty,      txt(fmt.format(r.qty)), right: true),
-            cell(_tStatus,   MesStatusBadge(status: r.status)),
+            cell(_tDate,     txt(_fmtDate(r.receiptDate), muted: true)),
+            cell(_tMaterial, txt(r.materialName)),
+            cell(_tSupplier, txt(r.supplierName)),
+            cell(_tQty,      txt(fmt.format(r.receivedQty)), right: true),
+            cell(_tUnit,     txt(r.unit), center: true),
+            cell(_tStatus,   _statusBadge(r.statusLabel)),
             cell(_tActions,  _actionsCell(), center: true),
           ]
               : [
             cell(_mLotNo,   _lotNoWidget(r)),
-            cell(_mDate,    txt(_fmtDate(r.docDate), muted: true)),
-            cell(_mStatus,  MesStatusBadge(status: r.status)),
+            cell(_mDate,    txt(_fmtDate(r.receiptDate), muted: true)),
+            cell(_mStatus,  _statusBadge(r.statusLabel)),
             cell(_mActions, _actionsCell(), center: true),
           ],
         ),
@@ -562,20 +627,16 @@ class _TableRowState extends State<_TableRow> {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        if (r.syncStatus == 'pending')
-          Container(
-            width: 7, height: 7, margin: const EdgeInsets.only(right: 6),
-            decoration: const BoxDecoration(
-              color: AppColors.warning, shape: BoxShape.circle,
-            ),
-          ),
         Flexible(
-          child: Text(r.lotNo,
-              style: GoogleFonts.outfit(
-                fontSize: 13, fontWeight: FontWeight.w600,
-                color: AppColors.textDark,
-              ),
-              overflow: TextOverflow.ellipsis),
+          child: Text(
+            r.lotNo,
+            style: GoogleFonts.outfit(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: AppColors.textDark,
+            ),
+            overflow: TextOverflow.ellipsis,
+          ),
         ),
       ],
     );
@@ -592,6 +653,9 @@ class _TableRowState extends State<_TableRow> {
   }
 }
 
+// ─────────────────────────────────────────────
+// Action button
+// ─────────────────────────────────────────────
 class _ActionBtn extends StatelessWidget {
   final IconData icon;
   final Color bg, iconColor;
@@ -599,8 +663,11 @@ class _ActionBtn extends StatelessWidget {
   final String tooltip;
 
   const _ActionBtn({
-    required this.icon, required this.bg, required this.iconColor,
-    required this.onTap, required this.tooltip,
+    required this.icon,
+    required this.bg,
+    required this.iconColor,
+    required this.onTap,
+    required this.tooltip,
   });
 
   @override
@@ -610,8 +677,12 @@ class _ActionBtn extends StatelessWidget {
       child: GestureDetector(
         onTap: onTap,
         child: Container(
-          width: 30, height: 30,
-          decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(7)),
+          width: 30,
+          height: 30,
+          decoration: BoxDecoration(
+            color: bg,
+            borderRadius: BorderRadius.circular(7),
+          ),
           child: Icon(icon, size: 15, color: iconColor),
         ),
       ),
@@ -627,8 +698,11 @@ class _Pagination extends StatelessWidget {
   final ValueChanged<int> onPage;
 
   const _Pagination({
-    required this.currentPage, required this.totalPages,
-    required this.total, required this.perPage, required this.onPage,
+    required this.currentPage,
+    required this.totalPages,
+    required this.total,
+    required this.perPage,
+    required this.onPage,
   });
 
   @override
@@ -642,13 +716,13 @@ class _Pagination extends StatelessWidget {
         color: AppColors.white,
         border: Border(top: BorderSide(color: AppColors.borderLight)),
         borderRadius: BorderRadius.only(
-          bottomLeft: Radius.circular(14), bottomRight: Radius.circular(14),
+          bottomLeft: Radius.circular(14),
+          bottomRight: Radius.circular(14),
         ),
       ),
       child: Row(
         children: [
-          Text('Showing $start–$end of $total',
-              style: AppTextStyles.caption()),
+          Text('Showing $start–$end of $total', style: AppTextStyles.caption()),
           const Spacer(),
           Row(
             children: [
@@ -659,7 +733,7 @@ class _Pagination extends StatelessWidget {
               ),
               const SizedBox(width: 4),
               ...List.generate(totalPages.clamp(0, 5), (i) {
-                final p = i + 1;
+                final p      = i + 1;
                 final active = p == currentPage;
                 return Padding(
                   padding: const EdgeInsets.only(right: 4),
@@ -690,8 +764,11 @@ class _PageBtn extends StatelessWidget {
   final VoidCallback onTap;
 
   const _PageBtn({
-    this.label, this.icon, this.active = false,
-    this.enabled = true, required this.onTap,
+    this.label,
+    this.icon,
+    this.active  = false,
+    this.enabled = true,
+    required this.onTap,
   });
 
   @override
@@ -699,24 +776,32 @@ class _PageBtn extends StatelessWidget {
     return GestureDetector(
       onTap: enabled ? onTap : null,
       child: Container(
-        width: 32, height: 32,
+        width: 32,
+        height: 32,
         decoration: BoxDecoration(
           color: active ? AppColors.green : AppColors.white,
           borderRadius: BorderRadius.circular(7),
-          border: active
-              ? null
-              : Border.all(color: AppColors.borderLight),
+          border: active ? null : Border.all(color: AppColors.borderLight),
         ),
         child: Center(
           child: label != null
-              ? Text(label!,
-              style: GoogleFonts.outfit(
-                fontSize: 13, fontWeight: FontWeight.w600,
-                color: active ? Colors.white
-                    : enabled ? AppColors.textMid : AppColors.textMuted,
-              ))
-              : Icon(icon, size: 18,
-              color: enabled ? AppColors.textMid : AppColors.textMuted),
+              ? Text(
+            label!,
+            style: GoogleFonts.outfit(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: active
+                  ? Colors.white
+                  : enabled
+                  ? AppColors.textMid
+                  : AppColors.textMuted,
+            ),
+          )
+              : Icon(
+            icon,
+            size: 18,
+            color: enabled ? AppColors.textMid : AppColors.textMuted,
+          ),
         ),
       ),
     );
@@ -735,27 +820,38 @@ class _EmptyState extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 60),
       child: Center(
-        child: Column(children: [
-          Container(
-            width: 64, height: 64,
-            decoration: BoxDecoration(
-              color: AppColors.greenLight, borderRadius: BorderRadius.circular(16),
+        child: Column(
+          children: [
+            Container(
+              width: 64,
+              height: 64,
+              decoration: BoxDecoration(
+                color: AppColors.greenLight,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: const Icon(
+                Icons.inventory_2_outlined,
+                size: 32,
+                color: AppColors.green,
+              ),
             ),
-            child: const Icon(Icons.inventory_2_outlined,
-                size: 32, color: AppColors.green),
-          ),
-          const SizedBox(height: 14),
-          Text('No records found',
-              style: AppTextStyles.subheading(color: AppColors.textMuted)),
-          const SizedBox(height: 4),
-          Text('Create your first receiving record to get started',
-              style: AppTextStyles.caption()),
-          const SizedBox(height: 20),
-          MesButton(
-            label: '+ Create First Record',
-            onPressed: onCreate,
-          ),
-        ]),
+            const SizedBox(height: 14),
+            Text(
+              'No records found',
+              style: AppTextStyles.subheading(color: AppColors.textMuted),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Create your first receiving record to get started',
+              style: AppTextStyles.caption(),
+            ),
+            const SizedBox(height: 20),
+            MesButton(
+              label: '+ Create First Record',
+              onPressed: onCreate,
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -771,50 +867,71 @@ class _ErrorState extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 48),
       child: Center(
-        child: Column(children: [
-          const Icon(Icons.wifi_off_outlined, size: 40, color: AppColors.textMuted),
-          const SizedBox(height: 12),
-          Text(message, style: AppTextStyles.body()),
-          const SizedBox(height: 14),
-          MesOutlineButton(label: 'Retry', icon: Icons.refresh, onPressed: onRetry),
-        ]),
+        child: Column(
+          children: [
+            const Icon(Icons.wifi_off_outlined, size: 40, color: AppColors.textMuted),
+            const SizedBox(height: 12),
+            Text(message, style: AppTextStyles.body()),
+            const SizedBox(height: 14),
+            MesOutlineButton(
+              label: 'Retry',
+              icon: Icons.refresh,
+              onPressed: onRetry,
+            ),
+          ],
+        ),
       ),
     );
   }
 }
 
+// ─────────────────────────────────────────────
+// Shimmer loader
+// ─────────────────────────────────────────────
 class _TableShimmer extends StatefulWidget {
   const _TableShimmer();
+
   @override
   State<_TableShimmer> createState() => _TableShimmerState();
 }
+
 class _TableShimmerState extends State<_TableShimmer>
     with SingleTickerProviderStateMixin {
   late AnimationController _ctrl;
   late Animation<double> _anim;
+
   @override
   void initState() {
     super.initState();
     _ctrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 900))
-      ..repeat(reverse: true);
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    )..repeat(reverse: true);
     _anim = Tween<double>(begin: 0.4, end: 0.85).animate(_ctrl);
   }
+
   @override
-  void dispose() { _ctrl.dispose(); super.dispose(); }
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
       animation: _anim,
       builder: (_, __) => Column(
-        children: List.generate(8, (i) => Container(
-          height: 46,
-          margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-          decoration: BoxDecoration(
-            color: AppColors.borderLight.withOpacity(_anim.value),
-            borderRadius: BorderRadius.circular(8),
+        children: List.generate(
+          8,
+              (i) => Container(
+            height: 46,
+            margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+            decoration: BoxDecoration(
+              color: AppColors.borderLight.withOpacity(_anim.value),
+              borderRadius: BorderRadius.circular(8),
+            ),
           ),
-        )),
+        ),
       ),
     );
   }

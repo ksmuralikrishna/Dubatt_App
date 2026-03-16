@@ -35,7 +35,7 @@ class _ReceivingFormScreenState extends State<ReceivingFormScreen> {
 
   // Dropdowns
   List<MaterialOption> _materials = [];
-  List<MaterialOption> _suppliers = [];
+  List<SupplierOption> _suppliers = [];
   String? _selectedMaterial;
   String? _selectedSupplier;
   String _selectedUnit = 'KG';
@@ -72,6 +72,14 @@ class _ReceivingFormScreenState extends State<ReceivingFormScreen> {
     _materials = await ReceivingService().getMaterials();
     _suppliers = await ReceivingService().getSuppliers();
 
+    // --- ADD THESE PRINT STATEMENTS ---
+    print('--- DROPDOWN DATA CHECK ---');
+    print('Materials count: ${_materials.length}');
+    print('Materials: ${_materials.map((m) => '${m.name} (${m.id})').toList()}');
+
+    print('Suppliers count: ${_suppliers.length}');
+    print('Suppliers: ${_suppliers.map((s) => '${s.name} (${s.id})').toList()}');
+    print('---------------------------');
     if (widget.isCreate) {
       final lotNo = await ReceivingService().generateLotNo();
       _dateCtrl.text = DateFormat('yyyy-MM-dd').format(DateTime.now());
@@ -92,7 +100,7 @@ class _ReceivingFormScreenState extends State<ReceivingFormScreen> {
     _currentId = record.id;
     _lotCtrl.text = record.lotNo;
     _dateCtrl.text = record.docDate;
-    _selectedSupplier = record.supplier;
+    _selectedSupplier = record.supplierId;
     _selectedMaterial = record.materialId;
     _invoiceQtyCtrl.text = record.invoiceQty?.toString() ?? '';
     _receiveQtyCtrl.text = record.receiveQty?.toString() ?? '';
@@ -127,19 +135,15 @@ class _ReceivingFormScreenState extends State<ReceivingFormScreen> {
   }
 
   Map<String, dynamic> _buildPayload() => {
+    'receipt_date': _dateCtrl.text.trim(),
     'lot_no': _lotCtrl.text.trim(),
-    'doc_date': _dateCtrl.text.trim(),
-    'supplier': _selectedSupplier,
-    'vehicle_no': _vehicleCtrl.text.trim(),
+    'vehicle_number': _vehicleCtrl.text.trim(),
+    'supplier_id': _selectedSupplier,
+    'material_id': _selectedMaterial,
+    'invoice_qty': double.tryParse(_invoiceQtyCtrl.text) ?? 0,
+    'received_qty': double.tryParse(_receiveQtyCtrl.text) ?? 0,
+    'unit': _selectedUnit,
     'remarks': _remarksCtrl.text.trim(),
-    'items': [
-      {
-        'material_id': _selectedMaterial,
-        'invoice_qty': double.tryParse(_invoiceQtyCtrl.text) ?? 0,
-        'receive_qty': double.tryParse(_receiveQtyCtrl.text) ?? 0,
-        'unit': _selectedUnit,
-      }
-    ],
   };
 
   Future<void> _save() async {
@@ -233,7 +237,6 @@ class _ReceivingFormScreenState extends State<ReceivingFormScreen> {
                       MesTextField(
                         label: 'Lot Number',
                         controller: _lotCtrl,
-                        readOnly: true,
                         prefixIcon: Icons.tag,
                         errorText: _fieldErrors['lot_no'],
                       ),
@@ -253,8 +256,8 @@ class _ReceivingFormScreenState extends State<ReceivingFormScreen> {
                       const SizedBox(height: 16),
                       DropdownButtonFormField<String>(
                         value: _selectedSupplier,
-                        hint: const Text('Select Supplier'),
-                        items: _suppliers.map((s) => DropdownMenuItem(value: s.id, child: Text(s.name))).toList(),
+                        items: _suppliers.map((s) => DropdownMenuItem(   // ✅ correct list + type
+                            value: s.id, child: Text(s.name))).toList(),
                         onChanged: (v) => setState(() => _selectedSupplier = v),
                         decoration: InputDecoration(
                           labelText: 'Supplier',

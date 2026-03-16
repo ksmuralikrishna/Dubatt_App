@@ -28,7 +28,7 @@ class ReceivingService {
         if (search != null && search.isNotEmpty) 'search': search,
         if (status != null && status != 'all') 'status': status,
       };
-      final uri = Uri.parse('$kBaseUrl/receiving-lots')
+      final uri = Uri.parse('$kBaseUrl/receivings')
           .replace(queryParameters: params);
       final res = await http.get(uri, headers: _headers)
           .timeout(const Duration(seconds: 12));
@@ -52,7 +52,7 @@ class ReceivingService {
   Future<ReceivingRecord?> getOne(String id) async {
     try {
       final res = await http.get(
-        Uri.parse('$kBaseUrl/receiving-lots/$id'),
+        Uri.parse('$kBaseUrl/receivings/$id'),
         headers: _headers,
       ).timeout(const Duration(seconds: 12));
       if (res.statusCode == 200) {
@@ -67,7 +67,7 @@ class ReceivingService {
   Future<String?> generateLotNo() async {
     try {
       final res = await http.get(
-        Uri.parse('$kBaseUrl/receiving-lots/generate-lot-no'),
+        Uri.parse('$kBaseUrl/receivings/generate-lot-no'),
         headers: _headers,
       ).timeout(const Duration(seconds: 8));
       if (res.statusCode == 200) {
@@ -85,6 +85,8 @@ class ReceivingService {
         Uri.parse('$kBaseUrl/materials?per_page=500'),
         headers: _headers,
       ).timeout(const Duration(seconds: 10));
+      print('📦 Materials status: ${res.statusCode}');      // check status
+      print('📦 Materials body: ${res.body}');
       if (res.statusCode == 200) {
         final body = jsonDecode(res.body);
         final list = body['data']?['data'] ?? body['data'] ?? [];
@@ -93,28 +95,28 @@ class ReceivingService {
       return [];
     } catch (_) { return []; }
   }
-  Future<List<MaterialOption>> getSuppliers() async {
-      try {
-        final res = await http.get(
-          Uri.parse('$kBaseUrl/suppliers'),
-          headers: _headers,
-        ).timeout(const Duration(seconds: 10));
-        if (res.statusCode == 200) {
-          final body = jsonDecode(res.body);
-          final list = body['data']?['data'] ?? body['data'] ?? [];
-          return (list as List).map((j) => MaterialOption.fromJson(j)).toList();
-        }
-        return [];
-      } catch (_) { return []; }
-    }
+  Future<List<SupplierOption>> getSuppliers() async {
+    try {
+      final res = await http.get(
+        Uri.parse('$kBaseUrl/suppliers'),
+        headers: _headers,
+      ).timeout(const Duration(seconds: 10));
+      if (res.statusCode == 200) {
+        final body = jsonDecode(res.body);
+        final list = body['data']?['data'] ?? body['data'] ?? [];
+        return (list as List).map((j) => SupplierOption.fromJson(j)).toList();  // ✅
+      }
+      return [];
+    } catch (_) { return []; }
+  }
 
   // ── Save (create / update) ──────────────────────────────────────
   Future<SaveResult> save(Map<String, dynamic> payload, {String? id}) async {
     try {
       final isCreate = id == null;
       final uri = Uri.parse(isCreate
-          ? '$kBaseUrl/receiving-lots'
-          : '$kBaseUrl/receiving-lots/$id');
+          ? '$kBaseUrl/receivings'
+          : '$kBaseUrl/receivings/$id');
       final res = await (isCreate
           ? http.post(uri, headers: _headers, body: jsonEncode(payload))
           : http.put(uri,  headers: _headers, body: jsonEncode(payload)))
@@ -135,7 +137,7 @@ class ReceivingService {
   Future<String?> submit(String id) async {
     try {
       final res = await http.post(
-        Uri.parse('$kBaseUrl/receiving-lots/$id/submit'),
+        Uri.parse('$kBaseUrl/receivings/$id/submit'),
         headers: _headers,
         body: '{}',
       ).timeout(const Duration(seconds: 12));

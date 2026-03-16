@@ -2,30 +2,49 @@ import 'dart:convert';
 class MaterialOption {
   final String id;
   final String name;
+  final String? code;
+  final String? unit;
 
   const MaterialOption({
     required this.id,
     required this.name,
+    this.code,
+    this.unit,
   });
 
   factory MaterialOption.fromJson(Map<String, dynamic> json) {
     return MaterialOption(
       id: json['id']?.toString() ?? '',
-      name: json['name']?.toString() ?? '',
+      name: json['material_name']?.toString() ?? '',  // ✅ was 'name', API returns 'material_name'
+      code: json['material_code']?.toString(),
+      unit: json['unit']?.toString(),
     );
   }
-
-  Map<String, dynamic> toJson() => {
-    'id': id,
-    'name': name,
-  };
 }
+class SupplierOption {
+  final String id;
+  final String name;
+  final String? code;
 
+  const SupplierOption({
+    required this.id,
+    required this.name,
+    this.code,
+  });
+
+  factory SupplierOption.fromJson(Map<String, dynamic> json) {
+    return SupplierOption(
+      id: json['id']?.toString() ?? '',
+      name: json['supplier_name']?.toString() ?? '',  // ✅ API returns 'supplier_name'
+      code: json['supplier_code']?.toString(),
+    );
+  }
+}
 class ReceivingRecord {
   final String? id;
   final String lotNo;
   final String docDate;
-  final String? supplier;
+  final String? supplierId;
   final String? materialId;
   final double? invoiceQty;
   final double? receiveQty;
@@ -37,7 +56,7 @@ class ReceivingRecord {
     this.id,
     required this.lotNo,
     required this.docDate,
-    this.supplier,
+    this.supplierId,
     this.materialId,
     this.invoiceQty,
     this.receiveQty,
@@ -47,46 +66,48 @@ class ReceivingRecord {
   });
 
   factory ReceivingRecord.fromJson(Map<String, dynamic> json) {
-    // Handle nested items array if present
-    final items = json['items'] as List<dynamic>?;
-    final firstItem = items?.isNotEmpty == true ? items!.first as Map<String, dynamic> : null;
+    final supplier = json['supplier'];
+    String? supplierId;
+    if (supplier is Map) {
+      supplierId = supplier['id']?.toString();       // ✅ extract id from nested object
+    } else {
+      supplierId = json['supplier_id']?.toString();  // ✅ fallback to supplier_id
+    }
 
     return ReceivingRecord(
-      id: json['id']?.toString(),
-      lotNo: json['lot_no']?.toString() ?? '',
-      docDate: json['doc_date']?.toString() ?? '',
-      supplier: json['supplier']?.toString(),
-      materialId: firstItem?['material_id']?.toString() ?? json['material_id']?.toString(),
-      invoiceQty: _toDouble(firstItem?['invoice_qty'] ?? json['invoice_qty']),
-      receiveQty: _toDouble(firstItem?['receive_qty'] ?? json['receive_qty']),
-      unit: firstItem?['unit']?.toString() ?? json['unit']?.toString(),
-      vehicleNo: json['vehicle_no']?.toString(),
-      remarks: json['remarks']?.toString(),
+      id:         json['id']?.toString(),
+      lotNo:      json['lot_no']?.toString() ?? '',
+      docDate:    json['receipt_date']?.toString() ?? '',  // ✅ API uses receipt_date
+      supplierId: supplierId,
+      materialId: json['material_id']?.toString()
+          ?? (json['material'] as Map?)?['id']?.toString(),
+      invoiceQty: _toDouble(json['invoice_qty']),
+      receiveQty: _toDouble(json['received_qty']),         // ✅ API uses received_qty
+      unit:       json['unit']?.toString(),
+      vehicleNo:  json['vehicle_number']?.toString(),      // ✅ API uses vehicle_number
+      remarks:    json['remarks']?.toString(),
     );
   }
 
   Map<String, dynamic> toJson() => {
-    'id': id,
+    if (id != null) 'id': id,
+    'receipt_date': docDate,
     'lot_no': lotNo,
-    'doc_date': docDate,
-    'supplier': supplier,
-    'vehicle_no': vehicleNo,
+    'supplier_id': supplierId,
+    'vehicle_number': vehicleNo,
+    'material_id': materialId,
+    'invoice_qty': invoiceQty,
+    'received_qty': receiveQty,
+    'unit': unit,
     'remarks': remarks,
-    'items': [
-      {
-        'material_id': materialId,
-        'invoice_qty': invoiceQty,
-        'receive_qty': receiveQty,
-        'unit': unit,
-      }
-    ],
   };
+
 
   ReceivingRecord copyWith({
     String? id,
     String? lotNo,
     String? docDate,
-    String? supplier,
+    String? supplierId,
     String? materialId,
     double? invoiceQty,
     double? receiveQty,
@@ -98,7 +119,7 @@ class ReceivingRecord {
       id: id ?? this.id,
       lotNo: lotNo ?? this.lotNo,
       docDate: docDate ?? this.docDate,
-      supplier: supplier ?? this.supplier,
+      supplierId: supplierId ?? this.supplierId,
       materialId: materialId ?? this.materialId,
       invoiceQty: invoiceQty ?? this.invoiceQty,
       receiveQty: receiveQty ?? this.receiveQty,
@@ -150,34 +171,43 @@ class SaveResult {
 class ReceivingSummary {
   final String id;
   final String lotNo;
-  final String docDate;
-  final String category;
-  final String supplier;
-  final double qty;
-  final String status;
-  final String syncStatus;
+  final String receiptDate;
+  final String materialName;
+  final String materialCategory;
+  final String supplierName;
+  final double receivedQty;
+  final String unit;
+  final String statusLabel;  // "Pending", "Approved", "In Progress"
+  final int statusCode;      // 0, 1, 2
 
   const ReceivingSummary({
     required this.id,
     required this.lotNo,
-    required this.docDate,
-    required this.category,
-    required this.supplier,
-    required this.qty,
-    required this.status,
-    required this.syncStatus,
+    required this.receiptDate,
+    required this.materialName,
+    required this.materialCategory,
+    required this.supplierName,
+    required this.receivedQty,
+    required this.unit,
+    required this.statusLabel,
+    required this.statusCode,
   });
 
   factory ReceivingSummary.fromJson(Map<String, dynamic> json) {
+    final supplier = json['supplier'] as Map<String, dynamic>?;
+    final material = json['material'] as Map<String, dynamic>?;
+
     return ReceivingSummary(
-      id: json['id']?.toString() ?? '',
-      lotNo: json['lot_no']?.toString() ?? '',
-      docDate: json['doc_date']?.toString() ?? '',
-      category: json['category']?.toString() ?? 'General',
-      supplier: json['supplier']?.toString() ?? json['supplier_name']?.toString() ?? '-',
-      qty: _toDouble(json['total_qty'] ?? json['receive_qty'] ?? json['invoice_qty']) ?? 0.0,
-      status: json['status']?.toString() ?? 'draft',
-      syncStatus: json['sync_status']?.toString() ?? 'synced',
+      id:               json['id']?.toString() ?? '',
+      lotNo:            json['lot_no']?.toString() ?? '',
+      receiptDate:      json['receipt_date']?.toString() ?? '',
+      materialName:     material?['material_name']?.toString() ?? '-',
+      materialCategory: material?['category']?.toString() ?? '-',
+      supplierName:     supplier?['supplier_name']?.toString() ?? '-',
+      receivedQty:      _toDouble(json['received_qty']) ?? 0.0,
+      unit:             json['unit']?.toString() ?? '',
+      statusLabel:      json['status_label']?.toString() ?? 'Pending',
+      statusCode:       (json['status'] as num?)?.toInt() ?? 0,
     );
   }
 

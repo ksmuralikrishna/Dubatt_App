@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 
-const String kBaseUrl = 'http://192.168.2.227:8000/api/auth';
+const String kBaseUrl = 'http://192.168.2.227:8000/api';
 
 class AuthService {
   static final AuthService _instance = AuthService._internal();
@@ -33,10 +33,10 @@ class AuthService {
 
   Future<LoginResult> login(String email, String password) async {
     print('Trying to login...');
-    print('POST $kBaseUrl/login with $email / $password');
+    print('POST $kBaseUrl/auth/login with $email / $password');
     try {
       final res = await http.post(
-        Uri.parse('$kBaseUrl/login'),
+        Uri.parse('$kBaseUrl/auth/login'),
         headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
         body: jsonEncode({'login': email, 'password': password}),
       ).timeout(const Duration(seconds: 15));
