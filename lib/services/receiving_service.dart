@@ -1,7 +1,18 @@
-import 'dart:convert';
+// import 'dart:convert';
+// import 'package:dubatt_app/models/sync_queue_model.dart';
+// import 'package:dubatt_app/services/connectivity_service.dart';
+// import 'package:dubatt_app/services/local_db_service.dart';
+// import 'package:http/http.dart' as http;
+// import '../services/auth_service.dart';
+// import '../models/receiving_model.dart';
+
+import 'dart:convert';                    // ✅ must be first
 import 'package:http/http.dart' as http;
-import '../services/auth_service.dart';
-import '../models/receiving_model.dart';
+import 'package:dubatt_app/services/auth_service.dart';
+import 'package:dubatt_app/services/connectivity_service.dart';
+import 'package:dubatt_app/services/local_db_service.dart';
+import 'package:dubatt_app/models/receiving_model.dart';
+import 'package:dubatt_app/models/sync_queue_model.dart';
 
 class ReceivingService {
   static final ReceivingService _i = ReceivingService._();
@@ -79,22 +90,55 @@ class ReceivingService {
   }
 
   // ── Materials dropdown ──────────────────────────────────────────
+  // Future<List<MaterialOption>> getMaterials() async {
+  //   try {
+  //     final res = await http.get(
+  //       Uri.parse('$kBaseUrl/materials?per_page=500'),
+  //       headers: _headers,
+  //     ).timeout(const Duration(seconds: 10));
+  //     print('📦 Materials status: ${res.statusCode}');      // check status
+  //     print('📦 Materials body: ${res.body}');
+  //     if (res.statusCode == 200) {
+  //       final body = jsonDecode(res.body);
+  //       final list = body['data']?['data'] ?? body['data'] ?? [];
+  //       return (list as List).map((j) => MaterialOption.fromJson(j)).toList();
+  //     }
+  //     return [];
+  //   } catch (_) { return []; }
+  // }
+  // Future<List<SupplierOption>> getSuppliers() async {
+  //   try {
+  //     final res = await http.get(
+  //       Uri.parse('$kBaseUrl/suppliers'),
+  //       headers: _headers,
+  //     ).timeout(const Duration(seconds: 10));
+  //     if (res.statusCode == 200) {
+  //       final body = jsonDecode(res.body);
+  //       final list = body['data']?['data'] ?? body['data'] ?? [];
+  //       return (list as List).map((j) => SupplierOption.fromJson(j)).toList();  // ✅
+  //     }
+  //     return [];
+  //   } catch (_) { return []; }
+  // }
   Future<List<MaterialOption>> getMaterials() async {
     try {
       final res = await http.get(
         Uri.parse('$kBaseUrl/materials?per_page=500'),
         headers: _headers,
       ).timeout(const Duration(seconds: 10));
-      print('📦 Materials status: ${res.statusCode}');      // check status
-      print('📦 Materials body: ${res.body}');
       if (res.statusCode == 200) {
         final body = jsonDecode(res.body);
         final list = body['data']?['data'] ?? body['data'] ?? [];
-        return (list as List).map((j) => MaterialOption.fromJson(j)).toList();
+        final options = (list as List).map((j) => MaterialOption.fromJson(j)).toList();
+        await LocalDbService().cacheDropdown('material', options); // ✅ cache for offline
+        return options;
       }
-      return [];
-    } catch (_) { return []; }
+      return await LocalDbService().getCachedMaterials(); // fallback
+    } catch (_) {
+      return await LocalDbService().getCachedMaterials(); // fallback
+    }
   }
+
   Future<List<SupplierOption>> getSuppliers() async {
     try {
       final res = await http.get(
@@ -104,14 +148,30 @@ class ReceivingService {
       if (res.statusCode == 200) {
         final body = jsonDecode(res.body);
         final list = body['data']?['data'] ?? body['data'] ?? [];
-        return (list as List).map((j) => SupplierOption.fromJson(j)).toList();  // ✅
+        final options = (list as List).map((j) => SupplierOption.fromJson(j)).toList();
+        await LocalDbService().cacheDropdown('supplier', options); // ✅ cache for offline
+        return options;
       }
-      return [];
-    } catch (_) { return []; }
+      return await LocalDbService().getCachedSuppliers(); // fallback
+    } catch (_) {
+      return await LocalDbService().getCachedSuppliers(); // fallback
+    }
   }
-
   // ── Save (create / update) ──────────────────────────────────────
   Future<SaveResult> save(Map<String, dynamic> payload, {String? id}) async {
+    if (!ConnectivityService().isOnline) {
+      // Save locally
+      final localId = await LocalDbService().insertReceiving(payload);
+      // Add to sync queue
+      await LocalDbService().addToQueue(SyncOperation(
+        operation: id == null ? SyncOperation.opCreate : SyncOperation.opUpdate,
+        table:     'receivings',
+        serverId:  id,
+        payload:   payload,
+        createdAt: DateTime.now(),
+      ));
+      return SaveResult.ok(null); // pending — will sync later
+    }
     try {
       final isCreate = id == null;
       final uri = Uri.parse(isCreate

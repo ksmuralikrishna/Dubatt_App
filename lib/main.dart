@@ -1,3 +1,5 @@
+import 'package:dubatt_app/services/connectivity_service.dart';
+import 'package:dubatt_app/services/local_db_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'theme/app_theme.dart';
@@ -19,6 +21,9 @@ void main() async {
 
   // Initialise auth service (load saved token)
   await AuthService().init();
+  await LocalDbService().init();        // ✅ init SQLite
+  await ConnectivityService().init();   // ✅ start watching network
+
 
   runApp(const MesApp());
 }

@@ -7,6 +7,9 @@ import '../../theme/app_theme.dart';
 import '../../widgets/common/widgets.dart';
 import '../../widgets/common/app_shell.dart';
 import '../../services/auth_service.dart';
+import 'package:dubatt_app/services/connectivity_service.dart';
+import 'package:dubatt_app/services/sync_service.dart';
+import 'package:dubatt_app/services/local_db_service.dart';
 
 class DashboardScreen extends StatefulWidget {
   final VoidCallback onLogout;
@@ -20,10 +23,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
   bool _isLoading = true;
 
   // Stats
-  int _receivingToday    = 0;
-  int _pendingSync       = 0;
-  int _submittedToday    = 0;
-  int _activeLots        = 0;
+  int _receivingToday = 0;
+  int _pendingSync    = 0;
+  int _submittedToday = 0;
+  int _activeLots     = 0;
 
   // Recent records
   List<Map<String, dynamic>> _recentRecords = [];
@@ -32,16 +35,37 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void initState() {
     super.initState();
     _loadData();
+
+    // ── Auto-sync when coming back online
+    ConnectivityService().onlineStream.listen((online) {
+      if (online && mounted) {
+        SyncService().syncAll().then((_) {
+          if (mounted) _loadData(); // refresh after sync
+        });
+      }
+    });
+
+    // ── Rebuild UI on sync state changes (badge update)
+    SyncService().onStateChanged = (state) {
+      if (mounted) setState(() {});
+    };
   }
 
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
     try {
-      await Future.wait([_loadStats(), _loadRecentRecords()]);
+      if (ConnectivityService().isOnline) {
+        // Online — load from API
+        await Future.wait([_loadStats(), _loadRecentRecords()]);
+      } else {
+        // Offline — load from local DB
+        await _loadLocalData();
+      }
     } catch (_) {}
     if (mounted) setState(() => _isLoading = false);
   }
 
+  // ── Online: load stats from API ────────────────────────────────
   Future<void> _loadStats() async {
     try {
       final res = await http.get(
@@ -53,9 +77,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ).timeout(const Duration(seconds: 8));
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body)['data'] ?? {};
+        // Merge pending count from local queue on top of server stats
+        final localPending = await LocalDbService().getPendingCount();
         setState(() {
           _receivingToday = data['receiving_today'] ?? 0;
-          _pendingSync    = data['pending_sync']    ?? 0;
+          _pendingSync    = localPending;              // ✅ use local queue count
           _submittedToday = data['submitted_today'] ?? 0;
           _activeLots     = data['active_lots']     ?? 0;
         });
@@ -63,6 +89,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     } catch (_) {}
   }
 
+  // ── Online: load recent records from API ───────────────────────
   Future<void> _loadRecentRecords() async {
     try {
       final res = await http.get(
@@ -82,11 +109,44 @@ class _DashboardScreenState extends State<DashboardScreen> {
     } catch (_) {}
   }
 
+  // ── Offline: load from local SQLite ───────────────────────────
+  Future<void> _loadLocalData() async {
+    final localRows = await LocalDbService().getLocalReceivings();
+    final pending   = await LocalDbService().getPendingCount();
+
+    setState(() {
+      _pendingSync   = pending;
+      _activeLots    = localRows.length;
+      _receivingToday = localRows
+          .where((r) {
+        final created = r['created_at'] as String? ?? '';
+        return created.startsWith(
+          DateTime.now().toIso8601String().substring(0, 10),
+        );
+      })
+          .length;
+      _submittedToday = 0; // unknown offline
+
+      // Map local DB rows to the same shape as API records
+      _recentRecords = localRows.take(5).map((r) => {
+        'lot_no':       r['lot_no'],
+        'receipt_date': r['receipt_date'],
+        'received_qty': r['received_qty'],
+        'unit':         r['unit'],
+        'status_label': r['status_label'] ?? 'Pending',
+        'sync_status':  r['sync_status'],
+        // Flatten nested for display
+        'material': {'material_name': r['material_name'] ?? '—'},
+        'supplier': {'supplier_name': r['supplier_name'] ?? '—'},
+      }).toList();
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
-    final hPad = Responsive.hPad(context);
+    final hPad     = Responsive.hPad(context);
     final isTablet = Responsive.isTablet(context);
-    final today = DateFormat('EEEE, dd MMM yyyy').format(DateTime.now());
+    final today    = DateFormat('EEEE, dd MMM yyyy').format(DateTime.now());
 
     return AppShell(
       currentRoute: '/dashboard',
@@ -103,7 +163,44 @@ class _DashboardScreenState extends State<DashboardScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
 
-                // ── Page header
+                // ── Offline banner ─────────────────────────────
+                StreamBuilder<bool>(
+                  stream: ConnectivityService().onlineStream,
+                  initialData: ConnectivityService().isOnline,
+                  builder: (_, snap) {
+                    final online = snap.data ?? true;
+                    if (online) return const SizedBox.shrink();
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 16),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFEF3C7),
+                        borderRadius: BorderRadius.circular(9),
+                        border: Border.all(color: const Color(0xFFF59E0B)),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.wifi_off,
+                              size: 16, color: Color(0xFFF59E0B)),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'You are offline. Showing locally saved data. '
+                                  'Changes will sync when connection restores.',
+                              style: GoogleFonts.outfit(
+                                fontSize: 13,
+                                color: const Color(0xFF92400E),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+
+                // ── Page header ────────────────────────────────
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -111,29 +208,37 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('Dashboard',
-                              style: AppTextStyles.display()),
+                          Text('Dashboard', style: AppTextStyles.display()),
                           const SizedBox(height: 4),
                           Text(
-                            'Welcome back, ${AuthService().userName}. Here\'s today\'s overview.',
+                            'Welcome back, ${AuthService().userName}. '
+                                "Here's today's overview.",
                             style: AppTextStyles.body(),
                           ),
                         ],
                       ),
                     ),
                     if (isTablet) ...[
-                      const SizedBox(width: 16),
+                      const SizedBox(width: 12),
+                      _SyncStatusBadge(),        // ✅ sync status
+                      const SizedBox(width: 12),
                       _DateChip(date: today),
                     ],
                   ],
                 ),
                 if (!isTablet) ...[
                   const SizedBox(height: 8),
-                  _DateChip(date: today),
+                  Row(
+                    children: [
+                      _SyncStatusBadge(),        // ✅ sync status
+                      const SizedBox(width: 8),
+                      _DateChip(date: today),
+                    ],
+                  ),
                 ],
                 const SizedBox(height: 28),
 
-                // ── Stats grid
+                // ── Stats grid ─────────────────────────────────
                 _isLoading
                     ? _StatsGridShimmer(isTablet: isTablet)
                     : _StatsGrid(
@@ -145,7 +250,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
                 const SizedBox(height: 24),
 
-                // ── Quick actions
+                // ── Sync errors (shown only if any) ────────────
+                if (SyncService().errors.isNotEmpty)
+                  _SyncErrorsBanner(errors: SyncService().errors),
+
+                // ── Quick actions ──────────────────────────────
                 _SectionTitle(title: 'Quick Actions'),
                 const SizedBox(height: 12),
                 _QuickActions(
@@ -157,13 +266,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
                 const SizedBox(height: 28),
 
-                // ── Recent records
+                // ── Recent records ─────────────────────────────
                 MesCard(
                   padding: EdgeInsets.zero,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Card header
                       Padding(
                         padding: const EdgeInsets.fromLTRB(22, 18, 16, 0),
                         child: Row(
@@ -180,7 +288,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               style: TextButton.styleFrom(
                                 foregroundColor: AppColors.green,
                                 textStyle: GoogleFonts.outfit(
-                                  fontSize: 13, fontWeight: FontWeight.w600,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
                                 ),
                               ),
                               child: const Text('View All →'),
@@ -190,8 +299,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       ),
                       const SizedBox(height: 4),
                       const Divider(height: 1, color: AppColors.borderLight),
-
-                      // Table
                       _isLoading
                           ? _TableShimmer()
                           : _recentRecords.isEmpty
@@ -207,6 +314,122 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────
+// Sync status badge
+// ─────────────────────────────────────────────
+class _SyncStatusBadge extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    final state   = SyncService().state;
+    final pending = SyncService().pendingCount;
+    final errors  = SyncService().errors;
+
+    if (state == SyncState.syncing) {
+      return _chip(Icons.sync, 'Syncing...', const Color(0xFF0891B2));
+    }
+    if (errors.isNotEmpty) {
+      return _chip(
+          Icons.error_outline, '${errors.length} sync error(s)', AppColors.error);
+    }
+    if (pending > 0) {
+      return _chip(
+          Icons.pending_outlined, '$pending pending', AppColors.warning);
+    }
+    return _chip(Icons.check_circle_outline, 'All synced', AppColors.green);
+  }
+
+  Widget _chip(IconData icon, String label, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 13, color: color),
+          const SizedBox(width: 5),
+          Text(
+            label,
+            style: GoogleFonts.outfit(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────
+// Sync errors banner
+// ─────────────────────────────────────────────
+class _SyncErrorsBanner extends StatelessWidget {
+  final List<String> errors;
+  const _SyncErrorsBanner({required this.errors});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 20),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFEF2F2),
+        borderRadius: BorderRadius.circular(9),
+        border: Border.all(color: AppColors.error.withOpacity(0.4)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.error_outline,
+                  size: 16, color: AppColors.error),
+              const SizedBox(width: 8),
+              Text(
+                '${errors.length} record(s) failed to sync',
+                style: GoogleFonts.outfit(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.error,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          ...errors.map((e) => Padding(
+            padding: const EdgeInsets.only(bottom: 4),
+            child: Text(
+              '• $e',
+              style: GoogleFonts.outfit(
+                fontSize: 12,
+                color: const Color(0xFF991B1B),
+              ),
+            ),
+          )),
+          const SizedBox(height: 8),
+          GestureDetector(
+            onTap: () => SyncService().syncAll(),
+            child: Text(
+              'Tap to retry sync →',
+              style: GoogleFonts.outfit(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: AppColors.error,
+                decoration: TextDecoration.underline,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -234,11 +457,14 @@ class _DateChip extends StatelessWidget {
           const Icon(Icons.calendar_today_outlined,
               size: 12, color: AppColors.green),
           const SizedBox(width: 6),
-          Text(date,
-              style: GoogleFonts.outfit(
-                fontSize: 12, fontWeight: FontWeight.w500,
-                color: AppColors.green,
-              )),
+          Text(
+            date,
+            style: GoogleFonts.outfit(
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+              color: AppColors.green,
+            ),
+          ),
         ],
       ),
     );
@@ -286,9 +512,9 @@ class _StatsGrid extends StatelessWidget {
       _StatData(
         label: 'Pending Sync',
         value: '$pendingSync',
-        subLabel: 'pending',
+        subLabel: pendingSync > 0 ? 'awaiting sync' : 'all synced',
         icon: Icons.sync_outlined,
-        accentColor: AppColors.warning,
+        accentColor: pendingSync > 0 ? AppColors.warning : AppColors.green,
       ),
       _StatData(
         label: 'Submitted Today',
@@ -311,9 +537,7 @@ class _StatsGrid extends StatelessWidget {
         children: stats
             .map((s) => Expanded(
           child: Padding(
-            padding: EdgeInsets.only(
-              right: s == stats.last ? 0 : 16,
-            ),
+            padding: EdgeInsets.only(right: s == stats.last ? 0 : 16),
             child: _StatCard(data: s),
           ),
         ))
@@ -366,7 +590,8 @@ class _StatCard extends StatelessWidget {
         boxShadow: [
           BoxShadow(
             color: data.accentColor.withOpacity(0.07),
-            blurRadius: 12, offset: const Offset(0, 2),
+            blurRadius: 12,
+            offset: const Offset(0, 2),
           ),
         ],
       ),
@@ -383,7 +608,8 @@ class _StatCard extends StatelessWidget {
                 ),
               ),
               Container(
-                width: 34, height: 34,
+                width: 34,
+                height: 34,
                 decoration: BoxDecoration(
                   color: data.accentColor.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(9),
@@ -396,7 +622,8 @@ class _StatCard extends StatelessWidget {
           Text(
             data.value,
             style: GoogleFonts.outfit(
-              fontSize: 28, fontWeight: FontWeight.w800,
+              fontSize: 28,
+              fontWeight: FontWeight.w800,
               color: AppColors.textDark,
             ),
           ),
@@ -409,7 +636,7 @@ class _StatCard extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────
-// Stats shimmer placeholder
+// Stats shimmer
 // ─────────────────────────────────────────────
 class _StatsGridShimmer extends StatefulWidget {
   final bool isTablet;
@@ -428,7 +655,8 @@ class _StatsGridShimmerState extends State<_StatsGridShimmer>
   void initState() {
     super.initState();
     _ctrl = AnimationController(
-      vsync: this, duration: const Duration(milliseconds: 900),
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
     )..repeat(reverse: true);
     _anim = Tween<double>(begin: 0.4, end: 0.9).animate(_ctrl);
   }
@@ -453,18 +681,23 @@ class _StatsGridShimmerState extends State<_StatsGridShimmer>
         );
         if (widget.isTablet) {
           return Row(
-            children: List.generate(4, (i) => Expanded(
-              child: Padding(
-                padding: EdgeInsets.only(right: i < 3 ? 16 : 0),
-                child: shimmer,
+            children: List.generate(
+              4,
+                  (i) => Expanded(
+                child: Padding(
+                  padding: EdgeInsets.only(right: i < 3 ? 16 : 0),
+                  child: shimmer,
+                ),
               ),
-            )),
+            ),
           );
         }
         return GridView.count(
-          crossAxisCount: 2, shrinkWrap: true,
+          crossAxisCount: 2,
+          shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
-          crossAxisSpacing: 14, mainAxisSpacing: 14,
+          crossAxisSpacing: 14,
+          mainAxisSpacing: 14,
           childAspectRatio: 1.5,
           children: List.generate(4, (_) => shimmer),
         );
@@ -509,9 +742,7 @@ class _QuickActions extends StatelessWidget {
         children: actions
             .map((a) => Expanded(
           child: Padding(
-            padding: EdgeInsets.only(
-              right: a == actions.last ? 0 : 16,
-            ),
+            padding: EdgeInsets.only(right: a == actions.last ? 0 : 16),
             child: _QuickActionCard(data: a),
           ),
         ))
@@ -571,7 +802,8 @@ class _QuickActionCardState extends State<_QuickActionCard> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Container(
-                width: 48, height: 48,
+                width: 48,
+                height: 48,
                 decoration: BoxDecoration(
                   color: AppColors.greenLight,
                   borderRadius: BorderRadius.circular(12),
@@ -583,7 +815,8 @@ class _QuickActionCardState extends State<_QuickActionCard> {
               Text(
                 widget.data.label,
                 style: GoogleFonts.outfit(
-                  fontSize: 13, fontWeight: FontWeight.w600,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
                   color: AppColors.textDark,
                 ),
                 textAlign: TextAlign.center,
@@ -592,7 +825,8 @@ class _QuickActionCardState extends State<_QuickActionCard> {
               Text(
                 widget.data.subLabel,
                 style: GoogleFonts.outfit(
-                  fontSize: 11, color: AppColors.textMuted,
+                  fontSize: 11,
+                  color: AppColors.textMuted,
                 ),
                 textAlign: TextAlign.center,
               ),
@@ -630,6 +864,7 @@ class _RecentTable extends StatelessWidget {
             3: FlexColumnWidth(0.8),
             4: FlexColumnWidth(1.2),
             5: FlexColumnWidth(0.8),
+            6: FlexColumnWidth(0.6), // ✅ sync status column
           }
               : const {
             0: FlexColumnWidth(1.4),
@@ -641,33 +876,36 @@ class _RecentTable extends StatelessWidget {
             TableRow(
               decoration: const BoxDecoration(color: AppColors.greenLight),
               children: (isTablet
-                  ? ['Lot No', 'Date', 'Material', 'Quantity', 'Supplier', 'Status']
+                  ? ['Lot No', 'Date', 'Material', 'Qty', 'Supplier', 'Status', '']
                   : ['Lot No', 'Date', 'Status'])
                   .map((h) => _HeaderCell(text: h))
                   .toList(),
             ),
             // Rows
             ...records.asMap().entries.map((e) {
-              final r = e.value;
+              final r      = e.value;
               final isLast = e.key == records.length - 1;
-              final lotNo    = r['lot_no']?.toString() ?? '—';
-              final date     = r['receipt_date']?.toString() ?? '—';         // ✅ was doc_date
-              final material = (r['material'] as Map?)?['material_name']     // ✅ nested object
+
+              final lotNo      = r['lot_no']?.toString() ?? '—';
+              final date       = r['receipt_date']?.toString() ?? '—';
+              final material   = (r['material'] as Map?)?['material_name']
                   ?.toString() ?? '—';
-              final qty      = r['received_qty']?.toString() ?? '—';         // ✅ was quantity
-              final unit     = r['unit']?.toString() ?? '';
-              final supplier = (r['supplier'] as Map?)?['supplier_name']     // ✅ nested object
+              final qty        = r['received_qty']?.toString() ?? '—';
+              final unit       = r['unit']?.toString() ?? '';
+              final supplier   = (r['supplier'] as Map?)?['supplier_name']
                   ?.toString() ?? '—';
-              final status   = r['status_label']?.toString() ?? 'Pending';   // ✅ was status
+              final status     = r['status_label']?.toString() ?? 'Pending';
+              final syncStatus = r['sync_status']?.toString() ?? 'synced';
 
               final cells = isTablet
                   ? [
                 _DataCell(text: lotNo, bold: true),
                 _DataCell(text: _fmtDate(date)),
                 _DataCell(text: material),
-                _DataCell(text: '$qty $unit', align: TextAlign.right),  // ✅ shows "123.00 KG"
+                _DataCell(text: '$qty $unit', align: TextAlign.right),
                 _DataCell(text: supplier),
                 _BadgeCell(status: status),
+                _SyncDotCell(syncStatus: syncStatus), // ✅ shows pending dot
               ]
                   : [
                 _DataCell(text: lotNo, bold: true),
@@ -694,10 +932,37 @@ class _RecentTable extends StatelessWidget {
 
   String _fmtDate(String raw) {
     try {
-      return DateFormat('dd/MM/yyyy').format(DateTime.parse(raw)); // ✅ handles ISO fine
+      return DateFormat('dd/MM/yyyy').format(DateTime.parse(raw));
     } catch (_) {
       return raw.length >= 10 ? raw.substring(0, 10) : raw;
     }
+  }
+}
+
+// ─────────────────────────────────────────────
+// Sync dot cell — shows orange dot if pending
+// ─────────────────────────────────────────────
+class _SyncDotCell extends StatelessWidget {
+  final String syncStatus;
+  const _SyncDotCell({required this.syncStatus});
+
+  @override
+  Widget build(BuildContext context) {
+    final isPending = syncStatus == 'pending';
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+      child: Tooltip(
+        message: isPending ? 'Pending sync' : 'Synced',
+        child: Container(
+          width: 10,
+          height: 10,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: isPending ? AppColors.warning : AppColors.green,
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -712,8 +977,10 @@ class _HeaderCell extends StatelessWidget {
       child: Text(
         text.toUpperCase(),
         style: GoogleFonts.outfit(
-          fontSize: 10.5, fontWeight: FontWeight.w700,
-          color: AppColors.green, letterSpacing: 1,
+          fontSize: 10.5,
+          fontWeight: FontWeight.w700,
+          color: AppColors.green,
+          letterSpacing: 1,
         ),
       ),
     );
@@ -749,7 +1016,7 @@ class _DataCell extends StatelessWidget {
 }
 
 class _BadgeCell extends StatelessWidget {
-  final String status;   // now receives "Pending", "Approved", "In Progress"
+  final String status;
   const _BadgeCell({required this.status});
 
   @override
@@ -757,24 +1024,32 @@ class _BadgeCell extends StatelessWidget {
     Color bg, fg;
     switch (status.toLowerCase()) {
       case 'approved':
-        bg = const Color(0xFFDCFCE7); fg = const Color(0xFF16A34A); break;
+        bg = const Color(0xFFDCFCE7);
+        fg = const Color(0xFF16A34A);
+        break;
       case 'in progress':
-        bg = const Color(0xFFFEF9C3); fg = const Color(0xFFCA8A04); break;
+        bg = const Color(0xFFFEF9C3);
+        fg = const Color(0xFFCA8A04);
+        break;
       case 'pending':
       default:
-        bg = const Color(0xFFF1F5F9); fg = AppColors.textMuted;
+        bg = const Color(0xFFF1F5F9);
+        fg = AppColors.textMuted;
     }
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
         decoration: BoxDecoration(
-          color: bg, borderRadius: BorderRadius.circular(20),
+          color: bg,
+          borderRadius: BorderRadius.circular(20),
         ),
         child: Text(
           status,
           style: GoogleFonts.outfit(
-            fontSize: 11, fontWeight: FontWeight.w600, color: fg,
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            color: fg,
           ),
         ),
       ),
@@ -799,27 +1074,34 @@ class _TableShimmerState extends State<_TableShimmer>
   void initState() {
     super.initState();
     _ctrl = AnimationController(
-      vsync: this, duration: const Duration(milliseconds: 900),
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
     )..repeat(reverse: true);
     _anim = Tween<double>(begin: 0.4, end: 0.85).animate(_ctrl);
   }
 
   @override
-  void dispose() { _ctrl.dispose(); super.dispose(); }
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
       animation: _anim,
       builder: (_, __) => Column(
-        children: List.generate(5, (i) => Container(
-          height: 46,
-          margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-          decoration: BoxDecoration(
-            color: AppColors.borderLight.withOpacity(_anim.value),
-            borderRadius: BorderRadius.circular(8),
+        children: List.generate(
+          5,
+              (i) => Container(
+            height: 46,
+            margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+            decoration: BoxDecoration(
+              color: AppColors.borderLight.withOpacity(_anim.value),
+              borderRadius: BorderRadius.circular(8),
+            ),
           ),
-        )),
+        ),
       ),
     );
   }
@@ -837,7 +1119,8 @@ class _EmptyState extends StatelessWidget {
         child: Column(
           children: [
             Container(
-              width: 64, height: 64,
+              width: 64,
+              height: 64,
               decoration: BoxDecoration(
                 color: AppColors.greenLight,
                 borderRadius: BorderRadius.circular(16),
@@ -846,12 +1129,15 @@ class _EmptyState extends StatelessWidget {
                   size: 32, color: AppColors.green),
             ),
             const SizedBox(height: 14),
-            Text('No receiving records yet',
-                style: AppTextStyles.subheading(
-                    color: AppColors.textMuted)),
+            Text(
+              'No receiving records yet',
+              style: AppTextStyles.subheading(color: AppColors.textMuted),
+            ),
             const SizedBox(height: 4),
-            Text('Create your first record to get started',
-                style: AppTextStyles.caption()),
+            Text(
+              'Create your first record to get started',
+              style: AppTextStyles.caption(),
+            ),
           ],
         ),
       ),

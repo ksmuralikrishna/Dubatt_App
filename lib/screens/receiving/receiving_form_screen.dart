@@ -1,3 +1,4 @@
+import 'package:dubatt_app/services/connectivity_service.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
@@ -228,6 +229,34 @@ class _ReceivingFormScreenState extends State<ReceivingFormScreen> {
                       onPressed: () => Navigator.of(context).pop(),
                     ),
                   ],
+                ),
+                // In build(), after MesPageHeader:
+                StreamBuilder<bool>(
+                  stream: ConnectivityService().onlineStream,
+                  initialData: ConnectivityService().isOnline,
+                  builder: (_, snap) {
+                    final online = snap.data ?? true;
+                    if (online) return const SizedBox.shrink();
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 16),
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFEF3C7),
+                        borderRadius: BorderRadius.circular(9),
+                        border: Border.all(color: const Color(0xFFF59E0B)),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.wifi_off, size: 16, color: Color(0xFFF59E0B)),
+                          const SizedBox(width: 8),
+                          Text(
+                            'You are offline. Record will sync when connection restores.',
+                            style: GoogleFonts.outfit(fontSize: 13, color: Color(0xFF92400E)),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
                 ),
                 const SizedBox(height: 20),
                 MesCard(
