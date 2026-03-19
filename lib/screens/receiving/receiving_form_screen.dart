@@ -11,10 +11,14 @@ import '../../services/receiving_service.dart';
 class ReceivingFormScreen extends StatefulWidget {
   final String? recordId;
   final VoidCallback onLogout;
+  final int? localId;
+  final bool isLocalOnly;
 
   const ReceivingFormScreen({
     super.key,
     this.recordId,
+    this.localId,
+    this.isLocalOnly = false,
     required this.onLogout,
   });
 
@@ -43,8 +47,9 @@ class _ReceivingFormScreenState extends State<ReceivingFormScreen> {
   final _units = ['KG', 'MT', 'L', 'PCS'];
 
   // State
-  bool _isLoading = true;
-  bool _isSaving  = false;
+  bool _isLoading    = true;
+  bool _isSaving     = false;
+  bool _isSubmitting = false; // ✅ separate loading state for submit
   Map<String, String> _fieldErrors = {};
   String? _currentId;
 
@@ -69,18 +74,9 @@ class _ReceivingFormScreenState extends State<ReceivingFormScreen> {
   Future<void> _init() async {
     setState(() => _isLoading = true);
 
-    // Load dropdowns
     _materials = await ReceivingService().getMaterials();
     _suppliers = await ReceivingService().getSuppliers();
 
-    // --- ADD THESE PRINT STATEMENTS ---
-    print('--- DROPDOWN DATA CHECK ---');
-    print('Materials count: ${_materials.length}');
-    print('Materials: ${_materials.map((m) => '${m.name} (${m.id})').toList()}');
-
-    print('Suppliers count: ${_suppliers.length}');
-    print('Suppliers: ${_suppliers.map((s) => '${s.name} (${s.id})').toList()}');
-    print('---------------------------');
     if (widget.isCreate) {
       final lotNo = await ReceivingService().generateLotNo();
       _dateCtrl.text = DateFormat('yyyy-MM-dd').format(DateTime.now());
@@ -98,24 +94,21 @@ class _ReceivingFormScreenState extends State<ReceivingFormScreen> {
       return;
     }
 
-    _currentId = record.id;
-    _lotCtrl.text = record.lotNo;
-    _dateCtrl.text = record.docDate;
-    _selectedSupplier = record.supplierId;
-    _selectedMaterial = record.materialId;
-    _invoiceQtyCtrl.text = record.invoiceQty?.toString() ?? '';
-    _receiveQtyCtrl.text = record.receiveQty?.toString() ?? '';
-    _selectedUnit = record.unit ?? 'KG';
-
-    _vehicleCtrl.text = record.vehicleNo ?? '';
-    _remarksCtrl.text = record.remarks ?? '';
-
-
+    _currentId            = record.id;
+    _lotCtrl.text         = record.lotNo;
+    _dateCtrl.text        = record.docDate;
+    _selectedSupplier     = record.supplierId;
+    _selectedMaterial     = record.materialId;
+    _invoiceQtyCtrl.text  = record.invoiceQty?.toString() ?? '';
+    _receiveQtyCtrl.text  = record.receiveQty?.toString() ?? '';
+    _selectedUnit         = record.unit ?? 'KG';
+    _vehicleCtrl.text     = record.vehicleNo ?? '';
+    _remarksCtrl.text     = record.remarks ?? '';
   }
 
   Future<void> _pickDate() async {
     final initial = DateTime.tryParse(_dateCtrl.text) ?? DateTime.now();
-    final picked = await showDatePicker(
+    final picked  = await showDatePicker(
       context: context,
       initialDate: initial,
       firstDate: DateTime(2020),
@@ -132,24 +125,27 @@ class _ReceivingFormScreenState extends State<ReceivingFormScreen> {
         child: child!,
       ),
     );
-    if (picked != null) _dateCtrl.text = DateFormat('yyyy-MM-dd').format(picked);
+    if (picked != null) {
+      _dateCtrl.text = DateFormat('yyyy-MM-dd').format(picked);
+    }
   }
 
   Map<String, dynamic> _buildPayload() => {
-    'receipt_date': _dateCtrl.text.trim(),
-    'lot_no': _lotCtrl.text.trim(),
+    'receipt_date':  _dateCtrl.text.trim(),
+    'lot_no':        _lotCtrl.text.trim(),
     'vehicle_number': _vehicleCtrl.text.trim(),
-    'supplier_id': _selectedSupplier,
-    'material_id': _selectedMaterial,
-    'invoice_qty': double.tryParse(_invoiceQtyCtrl.text) ?? 0,
-    'received_qty': double.tryParse(_receiveQtyCtrl.text) ?? 0,
-    'unit': _selectedUnit,
-    'remarks': _remarksCtrl.text.trim(),
+    'supplier_id':   _selectedSupplier,
+    'material_id':   _selectedMaterial,
+    'invoice_qty':   double.tryParse(_invoiceQtyCtrl.text) ?? 0,
+    'received_qty':  double.tryParse(_receiveQtyCtrl.text) ?? 0,
+    'unit':          _selectedUnit,
+    'remarks':       _remarksCtrl.text.trim(),
   };
 
+  // ── Save ────────────────────────────────────────────────────────
   Future<void> _save() async {
     setState(() {
-      _isSaving = true;
+      _isSaving    = true;
       _fieldErrors = {};
     });
 
@@ -181,16 +177,101 @@ class _ReceivingFormScreenState extends State<ReceivingFormScreen> {
     }
   }
 
+  // ── Submit ──────────────────────────────────────────────────────
+  Future<void> _submit() async {
+    // Block submit when offline — submit needs a live API call
+    if (!ConnectivityService().isOnline) {
+      _showSnack(
+        'You are offline. Please connect to submit.',
+        error: true,
+      );
+      return;
+    }
+
+    if (_currentId == null) {
+      _showSnack('Save the record before submitting.', error: true);
+      return;
+    }
+
+    // Confirm dialog before submitting
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        title: Text(
+          'Submit record?',
+          style: GoogleFonts.outfit(
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+            color: AppColors.textDark,
+          ),
+        ),
+        content: Text(
+          'Once submitted, this record cannot be edited.',
+          style: GoogleFonts.outfit(
+            fontSize: 14,
+            color: AppColors.textMid,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text(
+              'Cancel',
+              style: GoogleFonts.outfit(color: AppColors.textMuted),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.green,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8)),
+            ),
+            child: Text(
+              'Submit',
+              style: GoogleFonts.outfit(
+                  color: Colors.white, fontWeight: FontWeight.w600),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    setState(() => _isSubmitting = true);
+
+    final error = await ReceivingService().submit(_currentId!);
+
+    if (!mounted) return;
+    setState(() => _isSubmitting = false);
+
+    if (error == null) {
+      _showSnack('Record submitted successfully.');
+      // Pop back to list after successful submit
+      Navigator.of(context).pop();
+    } else {
+      _showSnack(error, error: true);
+    }
+  }
+
   void _showSnack(String msg, {bool error = false}) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Row(
         children: [
-          Icon(error ? Icons.error_outline : Icons.check_circle_outline,
-              color: Colors.white, size: 16),
+          Icon(
+            error ? Icons.error_outline : Icons.check_circle_outline,
+            color: Colors.white,
+            size: 16,
+          ),
           const SizedBox(width: 8),
           Expanded(
-              child: Text(msg,
-                  style: GoogleFonts.outfit(color: Colors.white, fontSize: 13))),
+            child: Text(
+              msg,
+              style: GoogleFonts.outfit(color: Colors.white, fontSize: 13),
+            ),
+          ),
         ],
       ),
       backgroundColor: error ? AppColors.error : AppColors.green,
@@ -204,13 +285,15 @@ class _ReceivingFormScreenState extends State<ReceivingFormScreen> {
   @override
   Widget build(BuildContext context) {
     final hPad = Responsive.hPad(context);
+
     return AppShell(
       currentRoute: '/receiving',
       onLogout: widget.onLogout,
       child: Scaffold(
         backgroundColor: AppColors.bg,
         body: _isLoading
-            ? const Center(child: CircularProgressIndicator(color: AppColors.green))
+            ? const Center(
+            child: CircularProgressIndicator(color: AppColors.green))
             : SingleChildScrollView(
           padding: EdgeInsets.fromLTRB(hPad, 28, hPad, 100),
           child: ConstrainedBox(
@@ -218,9 +301,15 @@ class _ReceivingFormScreenState extends State<ReceivingFormScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+
+                // ── Page header ──────────────────────────────
                 MesPageHeader(
-                  title: widget.isCreate ? 'Create Receiving Record' : 'Edit Receiving Record',
-                  subtitle: widget.isCreate ? 'Fill in the details' : 'Lot: ${_lotCtrl.text}',
+                  title: widget.isCreate
+                      ? 'Create Receiving Record'
+                      : 'Edit Receiving Record',
+                  subtitle: widget.isCreate
+                      ? 'Fill in the details'
+                      : 'Lot: ${_lotCtrl.text}',
                   actions: [
                     MesOutlineButton(
                       label: 'Back',
@@ -230,7 +319,8 @@ class _ReceivingFormScreenState extends State<ReceivingFormScreen> {
                     ),
                   ],
                 ),
-                // In build(), after MesPageHeader:
+
+                // ── Offline banner ───────────────────────────
                 StreamBuilder<bool>(
                   stream: ConnectivityService().onlineStream,
                   initialData: ConnectivityService().isOnline,
@@ -239,26 +329,39 @@ class _ReceivingFormScreenState extends State<ReceivingFormScreen> {
                     if (online) return const SizedBox.shrink();
                     return Container(
                       margin: const EdgeInsets.only(bottom: 16),
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 10),
                       decoration: BoxDecoration(
                         color: const Color(0xFFFEF3C7),
                         borderRadius: BorderRadius.circular(9),
-                        border: Border.all(color: const Color(0xFFF59E0B)),
+                        border: Border.all(
+                            color: const Color(0xFFF59E0B)),
                       ),
                       child: Row(
                         children: [
-                          const Icon(Icons.wifi_off, size: 16, color: Color(0xFFF59E0B)),
+                          const Icon(Icons.wifi_off,
+                              size: 16,
+                              color: Color(0xFFF59E0B)),
                           const SizedBox(width: 8),
-                          Text(
-                            'You are offline. Record will sync when connection restores.',
-                            style: GoogleFonts.outfit(fontSize: 13, color: Color(0xFF92400E)),
+                          Expanded(
+                            child: Text(
+                              'You are offline. Record will sync '
+                                  'when connection restores.',
+                              style: GoogleFonts.outfit(
+                                fontSize: 13,
+                                color: const Color(0xFF92400E),
+                              ),
+                            ),
                           ),
                         ],
                       ),
                     );
                   },
                 ),
+
                 const SizedBox(height: 20),
+
+                // ── Form card ────────────────────────────────
                 MesCard(
                   padding: const EdgeInsets.all(22),
                   child: Column(
@@ -277,7 +380,8 @@ class _ReceivingFormScreenState extends State<ReceivingFormScreen> {
                             label: 'Date',
                             controller: _dateCtrl,
                             readOnly: true,
-                            prefixIcon: Icons.calendar_today_outlined,
+                            prefixIcon:
+                            Icons.calendar_today_outlined,
                             errorText: _fieldErrors['doc_date'],
                           ),
                         ),
@@ -285,55 +389,86 @@ class _ReceivingFormScreenState extends State<ReceivingFormScreen> {
                       const SizedBox(height: 16),
                       DropdownButtonFormField<String>(
                         value: _selectedSupplier,
-                        items: _suppliers.map((s) => DropdownMenuItem(   // ✅ correct list + type
-                            value: s.id, child: Text(s.name))).toList(),
-                        onChanged: (v) => setState(() => _selectedSupplier = v),
+                        items: _suppliers
+                            .map((s) => DropdownMenuItem(
+                          value: s.id,
+                          child: Text(s.name),
+                        ))
+                            .toList(),
+                        onChanged: (v) =>
+                            setState(() => _selectedSupplier = v),
                         decoration: InputDecoration(
                           labelText: 'Supplier',
-                          prefixIcon: const Icon(Icons.person_outline),
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(9)),
+                          prefixIcon:
+                          const Icon(Icons.person_outline),
+                          border: OutlineInputBorder(
+                              borderRadius:
+                              BorderRadius.circular(9)),
                         ),
                       ),
                       const SizedBox(height: 16),
                       DropdownButtonFormField<String>(
                         value: _selectedMaterial,
                         hint: const Text('Select Material'),
-                        items: _materials.map((m) => DropdownMenuItem(value: m.id, child: Text(m.name))).toList(),
-                        onChanged: (v) => setState(() => _selectedMaterial = v),
+                        items: _materials
+                            .map((m) => DropdownMenuItem(
+                          value: m.id,
+                          child: Text(m.name),
+                        ))
+                            .toList(),
+                        onChanged: (v) =>
+                            setState(() => _selectedMaterial = v),
                         decoration: InputDecoration(
                           labelText: 'Material',
-                          prefixIcon: const Icon(Icons.inventory_2_outlined),
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(9)),
+                          prefixIcon: const Icon(
+                              Icons.inventory_2_outlined),
+                          border: OutlineInputBorder(
+                              borderRadius:
+                              BorderRadius.circular(9)),
                         ),
                       ),
                       const SizedBox(height: 16),
                       MesTextField(
                         label: 'Invoice Quantity',
                         controller: _invoiceQtyCtrl,
-                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        keyboardType:
+                        const TextInputType.numberWithOptions(
+                            decimal: true),
                       ),
                       const SizedBox(height: 16),
                       MesTextField(
                         label: 'Receive Quantity',
                         controller: _receiveQtyCtrl,
-                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        keyboardType:
+                        const TextInputType.numberWithOptions(
+                            decimal: true),
                       ),
                       const SizedBox(height: 16),
                       DropdownButtonFormField<String>(
                         value: _selectedUnit,
-                        items: _units.map((u) => DropdownMenuItem(value: u, child: Text(u))).toList(),
-                        onChanged: (v) => setState(() => _selectedUnit = v ?? 'KG'),
+                        items: _units
+                            .map((u) => DropdownMenuItem(
+                          value: u,
+                          child: Text(u),
+                        ))
+                            .toList(),
+                        onChanged: (v) => setState(
+                                () => _selectedUnit = v ?? 'KG'),
                         decoration: InputDecoration(
                           labelText: 'Unit',
-                          prefixIcon: const Icon(Icons.straighten_outlined),
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(9)),
+                          prefixIcon: const Icon(
+                              Icons.straighten_outlined),
+                          border: OutlineInputBorder(
+                              borderRadius:
+                              BorderRadius.circular(9)),
                         ),
                       ),
                       const SizedBox(height: 16),
                       MesTextField(
                         label: 'Vehicle Number',
                         controller: _vehicleCtrl,
-                        prefixIcon: Icons.local_shipping_outlined,
+                        prefixIcon:
+                        Icons.local_shipping_outlined,
                       ),
                       const SizedBox(height: 16),
                       MesTextField(
@@ -345,15 +480,96 @@ class _ReceivingFormScreenState extends State<ReceivingFormScreen> {
                     ],
                   ),
                 ),
+
                 const SizedBox(height: 20),
-                MesButton(
-                  label: widget.isCreate ? 'Create Record' : 'Save',
-                  icon: Icons.save_outlined,
-                  isLoading: _isSaving,
-                  onPressed: _save,
-                ),
+
+                // ── Action buttons ───────────────────────────
+                // Edit mode: Save + Submit side by side
+                // Create mode: Save only
+                if (!widget.isCreate)
+                  Row(
+                    children: [
+                      // Save button
+                      Expanded(
+                        child: MesButton(
+                          label: 'Save',
+                          icon: Icons.save_outlined,
+                          isLoading: _isSaving,
+                          onPressed:
+                          _isSubmitting ? null : _save,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      // Submit button — only in edit mode
+                      Expanded(
+                        child: _SubmitButton(
+                          isLoading: _isSubmitting,
+                          onPressed: _isSaving ? null : _submit,
+                        ),
+                      ),
+                    ],
+                  )
+                else
+                  MesButton(
+                    label: 'Create Record',
+                    icon: Icons.save_outlined,
+                    isLoading: _isSaving,
+                    onPressed: _save,
+                  ),
               ],
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────
+// Submit button widget
+// Styled distinctly from the green Save button
+// ─────────────────────────────────────────────
+class _SubmitButton extends StatelessWidget {
+  final bool isLoading;
+  final VoidCallback? onPressed;
+
+  const _SubmitButton({
+    required this.isLoading,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 48,
+      child: ElevatedButton.icon(
+        onPressed: onPressed,
+        icon: isLoading
+            ? const SizedBox(
+          width: 16,
+          height: 16,
+          child: CircularProgressIndicator(
+            strokeWidth: 2,
+            color: Colors.white,
+          ),
+        )
+            : const Icon(Icons.check_circle_outline,
+            size: 18, color: Colors.white),
+        label: Text(
+          isLoading ? 'Submitting...' : 'Submit',
+          style: GoogleFonts.outfit(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: Colors.white,
+          ),
+        ),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: const Color(0xFF0891B2), // teal/blue
+          disabledBackgroundColor:
+          const Color(0xFF0891B2).withOpacity(0.5),
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
           ),
         ),
       ),

@@ -7,6 +7,7 @@ import '../../widgets/common/widgets.dart';
 import '../../widgets/common/app_shell.dart';
 import '../../models/receiving_model.dart';
 import '../../services/receiving_service.dart';
+import 'package:dubatt_app/services/connectivity_service.dart';
 import 'receiving_form_screen.dart';
 
 class ReceivingListScreen extends StatefulWidget {
@@ -20,6 +21,7 @@ class ReceivingListScreen extends StatefulWidget {
 class _ReceivingListScreenState extends State<ReceivingListScreen> {
   final _searchCtrl = TextEditingController();
   Timer? _debounce;
+  StreamSubscription<bool>? _connectivitySub;
 
   List<ReceivingSummary> _records = [];
   bool _isLoading  = true;
@@ -29,7 +31,7 @@ class _ReceivingListScreenState extends State<ReceivingListScreen> {
   static const _perPage = 20;
 
   String _statusFilter = 'all';
-  String _sortBy       = 'receipt_date';  // ✅ matches API field
+  String _sortBy       = 'receipt_date';
   String _sortOrder    = 'desc';
 
   final _statusOptions = const [
@@ -43,11 +45,18 @@ class _ReceivingListScreenState extends State<ReceivingListScreen> {
   void initState() {
     super.initState();
     _load();
+
+    _connectivitySub = ConnectivityService().onlineStream.listen((online) {
+      if (online && mounted) {
+        _load(reset: true);
+      }
+    });
   }
 
   @override
   void dispose() {
     _debounce?.cancel();
+    _connectivitySub?.cancel();
     _searchCtrl.dispose();
     super.dispose();
   }
@@ -57,10 +66,10 @@ class _ReceivingListScreenState extends State<ReceivingListScreen> {
     setState(() { _isLoading = true; _errorMsg = null; });
 
     final result = await ReceivingService().getList(
-      page: _currentPage,
+      page:    _currentPage,
       perPage: _perPage,
-      search: _searchCtrl.text.trim(),
-      status: _statusFilter,
+      search:  _searchCtrl.text.trim(),
+      status:  _statusFilter,
     );
 
     if (!mounted) return;
@@ -77,7 +86,8 @@ class _ReceivingListScreenState extends State<ReceivingListScreen> {
 
   void _onSearchChanged(String v) {
     _debounce?.cancel();
-    _debounce = Timer(const Duration(milliseconds: 350), () => _load(reset: true));
+    _debounce = Timer(
+        const Duration(milliseconds: 350), () => _load(reset: true));
   }
 
   void _openForm({String? id}) async {
@@ -87,7 +97,97 @@ class _ReceivingListScreenState extends State<ReceivingListScreen> {
         onLogout: widget.onLogout,
       ),
     ));
-    _load(reset: true); // refresh list after returning
+    _load(reset: true);
+  }
+
+  // ── Delete ─────────────────────────────────────────────────────
+  Future<void> _confirmDelete(ReceivingSummary record) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14)),
+        title: Text(
+          'Delete record?',
+          style: GoogleFonts.outfit(
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+            color: AppColors.textDark,
+          ),
+        ),
+        content: Text(
+          'Lot "${record.lotNo}" will be permanently deleted. '
+              'This cannot be undone.',
+          style: GoogleFonts.outfit(
+              fontSize: 14, color: AppColors.textMid),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text(
+              'Cancel',
+              style: GoogleFonts.outfit(color: AppColors.textMuted),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.error,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8)),
+              elevation: 0,
+            ),
+            child: Text(
+              'Delete',
+              style: GoogleFonts.outfit(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    final error = await ReceivingService().delete(record.id);
+
+    if (!mounted) return;
+
+    if (error == null) {
+      _showSnack('Record deleted successfully.');
+      _load(reset: true);
+    } else {
+      _showSnack(error, error: true);
+    }
+  }
+
+  void _showSnack(String msg, {bool error = false}) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Row(
+        children: [
+          Icon(
+            error ? Icons.error_outline : Icons.check_circle_outline,
+            color: Colors.white,
+            size: 16,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              msg,
+              style: GoogleFonts.outfit(
+                  color: Colors.white, fontSize: 13),
+            ),
+          ),
+        ],
+      ),
+      backgroundColor: error ? AppColors.error : AppColors.green,
+      behavior: SnackBarBehavior.floating,
+      shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(9)),
+      margin: const EdgeInsets.all(16),
+      duration: const Duration(seconds: 3),
+    ));
   }
 
   int get _totalPages => (_total / _perPage).ceil().clamp(1, 999);
@@ -111,10 +211,51 @@ class _ReceivingListScreenState extends State<ReceivingListScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
 
-                    // ── Page header
+                    // ── Offline banner ─────────────────────────────
+                    StreamBuilder<bool>(
+                      stream: ConnectivityService().onlineStream,
+                      initialData: ConnectivityService().isOnline,
+                      builder: (_, snap) {
+                        final online = snap.data ?? true;
+                        if (online) return const SizedBox.shrink();
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 16),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 10),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFEF3C7),
+                            borderRadius: BorderRadius.circular(9),
+                            border: Border.all(
+                                color: const Color(0xFFF59E0B)),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.wifi_off,
+                                  size: 16,
+                                  color: Color(0xFFF59E0B)),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  'You are offline. Showing cached data. '
+                                      'New records will sync when '
+                                      'connection restores.',
+                                  style: GoogleFonts.outfit(
+                                    fontSize: 13,
+                                    color: const Color(0xFF92400E),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+
+                    // ── Page header ────────────────────────────────
                     MesPageHeader(
                       title: 'Receiving',
-                      subtitle: 'Manage and track all incoming material lots',
+                      subtitle:
+                      'Manage and track all incoming material lots',
                       actions: [
                         MesButton(
                           label: 'Create New',
@@ -124,22 +265,24 @@ class _ReceivingListScreenState extends State<ReceivingListScreen> {
                       ],
                     ),
 
-                    // ── Search + filter bar
+                    // ── Search + filter bar ────────────────────────
                     MesCard(
                       padding: const EdgeInsets.all(14),
                       child: isTablet
                           ? Row(children: _filterWidgets(isTablet))
                           : Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                        crossAxisAlignment:
+                        CrossAxisAlignment.start,
                         children: _filterWidgets(isTablet),
                       ),
                     ),
                     const SizedBox(height: 10),
 
-                    // ── Count + clear
+                    // ── Count + clear ──────────────────────────────
                     _CountBar(
                       total: _total,
-                      hasFilters: _searchCtrl.text.isNotEmpty || _statusFilter != 'all',
+                      hasFilters: _searchCtrl.text.isNotEmpty ||
+                          _statusFilter != 'all',
                       onClear: () {
                         _searchCtrl.clear();
                         setState(() => _statusFilter = 'all');
@@ -148,7 +291,7 @@ class _ReceivingListScreenState extends State<ReceivingListScreen> {
                     ),
                     const SizedBox(height: 10),
 
-                    // ── Table card
+                    // ── Table card ─────────────────────────────────
                     MesCard(
                       padding: EdgeInsets.zero,
                       child: Column(
@@ -161,16 +304,20 @@ class _ReceivingListScreenState extends State<ReceivingListScreen> {
                             onRetry: () => _load(),
                           )
                               : _records.isEmpty
-                              ? _EmptyState(onCreate: () => _openForm())
+                              ? _EmptyState(
+                              onCreate: () => _openForm())
                               : _RecordsTable(
-                            records: _records,
-                            isTablet: isTablet,
-                            sortBy: _sortBy,
+                            records:   _records,
+                            isTablet:  isTablet,
+                            sortBy:    _sortBy,
                             sortOrder: _sortOrder,
                             onSort: (col) {
                               setState(() {
                                 if (_sortBy == col) {
-                                  _sortOrder = _sortOrder == 'asc' ? 'desc' : 'asc';
+                                  _sortOrder =
+                                  _sortOrder == 'asc'
+                                      ? 'desc'
+                                      : 'asc';
                                 } else {
                                   _sortBy    = col;
                                   _sortOrder = 'desc';
@@ -178,16 +325,17 @@ class _ReceivingListScreenState extends State<ReceivingListScreen> {
                               });
                               _load();
                             },
-                            onEdit: (id) => _openForm(id: id),
+                            onEdit: (id) =>
+                                _openForm(id: id),
+                            onDelete: _confirmDelete,
                           ),
 
-                          // ── Pagination
                           if (!_isLoading && _records.isNotEmpty)
                             _Pagination(
                               currentPage: _currentPage,
-                              totalPages: _totalPages,
-                              total: _total,
-                              perPage: _perPage,
+                              totalPages:  _totalPages,
+                              total:       _total,
+                              perPage:     _perPage,
                               onPage: (p) {
                                 setState(() => _currentPage = p);
                                 _load();
@@ -211,25 +359,32 @@ class _ReceivingListScreenState extends State<ReceivingListScreen> {
       child: TextField(
         controller: _searchCtrl,
         onChanged: _onSearchChanged,
-        style: GoogleFonts.outfit(fontSize: 13.5, color: AppColors.textDark),
+        style: GoogleFonts.outfit(
+            fontSize: 13.5, color: AppColors.textDark),
         decoration: InputDecoration(
           hintText: 'Search by lot no, supplier...',
-          hintStyle: GoogleFonts.outfit(fontSize: 13.5, color: AppColors.textMuted),
-          prefixIcon: const Icon(Icons.search, size: 18, color: AppColors.textMuted),
+          hintStyle: GoogleFonts.outfit(
+              fontSize: 13.5, color: AppColors.textMuted),
+          prefixIcon: const Icon(Icons.search,
+              size: 18, color: AppColors.textMuted),
           filled: true,
           fillColor: AppColors.greenXLight,
-          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+          contentPadding: const EdgeInsets.symmetric(
+              horizontal: 14, vertical: 11),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(9),
-            borderSide: const BorderSide(color: AppColors.border, width: 1.5),
+            borderSide: const BorderSide(
+                color: AppColors.border, width: 1.5),
           ),
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(9),
-            borderSide: const BorderSide(color: AppColors.border, width: 1.5),
+            borderSide: const BorderSide(
+                color: AppColors.border, width: 1.5),
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(9),
-            borderSide: const BorderSide(color: AppColors.green, width: 1.5),
+            borderSide: const BorderSide(
+                color: AppColors.green, width: 1.5),
           ),
         ),
       ),
@@ -239,24 +394,29 @@ class _ReceivingListScreenState extends State<ReceivingListScreen> {
       width: isTablet ? 170 : double.infinity,
       child: DropdownButtonFormField<String>(
         value: _statusFilter,
-        style: GoogleFonts.outfit(fontSize: 13, color: AppColors.textDark),
+        style: GoogleFonts.outfit(
+            fontSize: 13, color: AppColors.textDark),
         decoration: InputDecoration(
           filled: true,
           fillColor: AppColors.greenXLight,
-          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+          contentPadding: const EdgeInsets.symmetric(
+              horizontal: 14, vertical: 11),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(9),
-            borderSide: const BorderSide(color: AppColors.border, width: 1.5),
+            borderSide: const BorderSide(
+                color: AppColors.border, width: 1.5),
           ),
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(9),
-            borderSide: const BorderSide(color: AppColors.border, width: 1.5),
+            borderSide: const BorderSide(
+                color: AppColors.border, width: 1.5),
           ),
         ),
         items: _statusOptions
             .map((o) => DropdownMenuItem(
           value: o['value'],
-          child: Text(o['label']!, style: GoogleFonts.outfit(fontSize: 13)),
+          child: Text(o['label']!,
+              style: GoogleFonts.outfit(fontSize: 13)),
         ))
             .toList(),
         onChanged: (v) {
@@ -301,7 +461,8 @@ class _CountBar extends StatelessWidget {
             onPressed: onClear,
             style: TextButton.styleFrom(
               foregroundColor: AppColors.green,
-              textStyle: GoogleFonts.outfit(fontSize: 12, fontWeight: FontWeight.w600),
+              textStyle: GoogleFonts.outfit(
+                  fontSize: 12, fontWeight: FontWeight.w600),
               padding: EdgeInsets.zero,
             ),
             child: const Text('Clear filters'),
@@ -313,9 +474,8 @@ class _CountBar extends StatelessWidget {
 
 // ─────────────────────────────────────────────
 // Column width constants
+// Actions column widened to fit both edit + delete buttons
 // ─────────────────────────────────────────────
-
-// Tablet
 const double _tLotNo    = 140.0;
 const double _tDate     = 110.0;
 const double _tMaterial = 160.0;
@@ -323,13 +483,12 @@ const double _tSupplier = 160.0;
 const double _tQty      = 110.0;
 const double _tUnit     = 70.0;
 const double _tStatus   = 120.0;
-const double _tActions  = 80.0;
+const double _tActions  = 76.0; // ✅ widened: edit + delete side by side
 
-// Mobile
 const double _mLotNo    = 140.0;
 const double _mDate     = 110.0;
 const double _mStatus   = 120.0;
-const double _mActions  = 70.0;
+const double _mActions  = 76.0; // ✅ widened
 
 // ─────────────────────────────────────────────
 // Records table
@@ -340,6 +499,7 @@ class _RecordsTable extends StatelessWidget {
   final String sortBy, sortOrder;
   final ValueChanged<String> onSort;
   final ValueChanged<String> onEdit;
+  final ValueChanged<ReceivingSummary> onDelete; // ✅ new
 
   const _RecordsTable({
     required this.records,
@@ -348,40 +508,44 @@ class _RecordsTable extends StatelessWidget {
     required this.sortOrder,
     required this.onSort,
     required this.onEdit,
+    required this.onDelete, // ✅ new
   });
 
   double get _tableWidth => isTablet
-      ? _tLotNo + _tDate + _tMaterial + _tSupplier + _tQty + _tUnit + _tStatus + _tActions
+      ? _tLotNo + _tDate + _tMaterial + _tSupplier +
+      _tQty + _tUnit + _tStatus + _tActions
       : _mLotNo + _mDate + _mStatus + _mActions;
 
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(builder: (context, constraints) {
-      final available  = constraints.maxWidth;
+      final available   = constraints.maxWidth;
       final needsScroll = _tableWidth > available;
 
       Widget content = Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _TableHeader(
-            isTablet: isTablet,
+            isTablet:   isTablet,
             tableWidth: needsScroll ? _tableWidth : available,
-            sortBy: sortBy,
-            sortOrder: sortOrder,
-            onSort: onSort,
+            sortBy:     sortBy,
+            sortOrder:  sortOrder,
+            onSort:     onSort,
           ),
           ...records.asMap().entries.map((e) => _TableRow(
-            record: e.value,
-            isTablet: isTablet,
+            record:     e.value,
+            isTablet:   isTablet,
             tableWidth: needsScroll ? _tableWidth : available,
-            isLast: e.key == records.length - 1,
-            onEdit: () => onEdit(e.value.id),
+            isLast:     e.key == records.length - 1,
+            onEdit:     () => onEdit(e.value.id),
+            onDelete:   () => onDelete(e.value), // ✅ pass full record
           )),
         ],
       );
 
       return needsScroll
-          ? SingleChildScrollView(scrollDirection: Axis.horizontal, child: content)
+          ? SingleChildScrollView(
+          scrollDirection: Axis.horizontal, child: content)
           : content;
     });
   }
@@ -410,27 +574,32 @@ class _TableHeader extends StatelessWidget {
       width: tableWidth,
       decoration: const BoxDecoration(
         color: AppColors.greenLight,
-        border: Border(bottom: BorderSide(color: AppColors.border, width: 2)),
+        border: Border(
+            bottom: BorderSide(color: AppColors.border, width: 2)),
         borderRadius: BorderRadius.only(
-          topLeft: Radius.circular(14),
+          topLeft:  Radius.circular(14),
           topRight: Radius.circular(14),
         ),
       ),
       child: Row(
         children: isTablet
             ? [
-          _hCell('Lot No',   _tLotNo,    key: 'lot_no',       sortable: true),
-          _hCell('Date',     _tDate,     key: 'receipt_date', sortable: true),
+          _hCell('Lot No',   _tLotNo,
+              key: 'lot_no', sortable: true),
+          _hCell('Date',     _tDate,
+              key: 'receipt_date', sortable: true),
           _hCell('Material', _tMaterial),
           _hCell('Supplier', _tSupplier),
-          _hCell('Recv Qty', _tQty,    right: true),
-          _hCell('Unit',     _tUnit,   center: true),
+          _hCell('Recv Qty', _tQty,  right: true),
+          _hCell('Unit',     _tUnit, center: true),
           _hCell('Status',   _tStatus),
           _hCell('Actions',  _tActions, center: true),
         ]
             : [
-          _hCell('Lot No',  _mLotNo,  key: 'lot_no',       sortable: true),
-          _hCell('Date',    _mDate,   key: 'receipt_date', sortable: true),
+          _hCell('Lot No',  _mLotNo,
+              key: 'lot_no', sortable: true),
+          _hCell('Date',    _mDate,
+              key: 'receipt_date', sortable: true),
           _hCell('Status',  _mStatus),
           _hCell('Actions', _mActions, center: true),
         ],
@@ -451,7 +620,8 @@ class _TableHeader extends StatelessWidget {
       child: SizedBox(
         width: width,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+          padding: const EdgeInsets.symmetric(
+              horizontal: 14, vertical: 11),
           child: Row(
             mainAxisAlignment: center
                 ? MainAxisAlignment.center
@@ -472,7 +642,9 @@ class _TableHeader extends StatelessWidget {
                       : Icons.keyboard_arrow_down
                       : Icons.unfold_more,
                   size: 14,
-                  color: sortBy == key ? AppColors.green : AppColors.textMuted,
+                  color: sortBy == key
+                      ? AppColors.green
+                      : AppColors.textMuted,
                 ),
               ],
             ],
@@ -491,6 +663,7 @@ class _TableRow extends StatefulWidget {
   final bool isTablet, isLast;
   final double tableWidth;
   final VoidCallback onEdit;
+  final VoidCallback onDelete; // ✅ new
 
   const _TableRow({
     required this.record,
@@ -498,6 +671,7 @@ class _TableRow extends StatefulWidget {
     required this.isLast,
     required this.tableWidth,
     required this.onEdit,
+    required this.onDelete, // ✅ new
   });
 
   @override
@@ -507,7 +681,6 @@ class _TableRow extends StatefulWidget {
 class _TableRowState extends State<_TableRow> {
   bool _hovered = false;
 
-  // Formats ISO date string → dd/MM/yyyy
   String _fmtDate(String raw) {
     try {
       return DateFormat('dd/MM/yyyy').format(DateTime.parse(raw));
@@ -516,7 +689,6 @@ class _TableRowState extends State<_TableRow> {
     }
   }
 
-  // Status badge using statusLabel from API ("Pending", "Approved", "In Progress")
   Widget _statusBadge(String label) {
     Color bg, fg;
     switch (label.toLowerCase()) {
@@ -536,8 +708,7 @@ class _TableRowState extends State<_TableRow> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
       decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(20),
+        color: bg, borderRadius: BorderRadius.circular(20),
       ),
       child: Text(
         label,
@@ -555,6 +726,9 @@ class _TableRowState extends State<_TableRow> {
     final r   = widget.record;
     final fmt = NumberFormat('#,##0.00');
 
+    // ✅ Show delete only when statusCode == 0 (Pending)
+    final canDelete = r.statusCode == 0;
+
     Widget cell(
         double width,
         Widget child, {
@@ -564,29 +738,34 @@ class _TableRowState extends State<_TableRow> {
       return SizedBox(
         width: width,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          padding: const EdgeInsets.symmetric(
+              horizontal: 14, vertical: 12),
           child: center
               ? Center(child: child)
               : right
-              ? Align(alignment: Alignment.centerRight, child: child)
+              ? Align(
+              alignment: Alignment.centerRight,
+              child: child)
               : child,
         ),
       );
     }
 
-    Widget txt(String text, {bool bold = false, bool muted = false}) => Text(
-      text,
-      overflow: TextOverflow.ellipsis,
-      style: GoogleFonts.outfit(
-        fontSize: 13,
-        fontWeight: bold ? FontWeight.w600 : FontWeight.w400,
-        color: bold
-            ? AppColors.textDark
-            : muted
-            ? AppColors.textMuted
-            : AppColors.textMid,
-      ),
-    );
+    Widget txt(String text,
+        {bool bold = false, bool muted = false}) =>
+        Text(
+          text,
+          overflow: TextOverflow.ellipsis,
+          style: GoogleFonts.outfit(
+            fontSize: 13,
+            fontWeight: bold ? FontWeight.w600 : FontWeight.w400,
+            color: bold
+                ? AppColors.textDark
+                : muted
+                ? AppColors.textMuted
+                : AppColors.textMid,
+          ),
+        );
 
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
@@ -598,25 +777,31 @@ class _TableRowState extends State<_TableRow> {
           color: _hovered ? AppColors.greenXLight : AppColors.white,
           border: widget.isLast
               ? null
-              : const Border(bottom: BorderSide(color: AppColors.borderLight)),
+              : const Border(
+              bottom: BorderSide(color: AppColors.borderLight)),
         ),
         child: Row(
           children: widget.isTablet
               ? [
             cell(_tLotNo,    _lotNoWidget(r)),
-            cell(_tDate,     txt(_fmtDate(r.receiptDate), muted: true)),
+            cell(_tDate,
+                txt(_fmtDate(r.receiptDate), muted: true)),
             cell(_tMaterial, txt(r.materialName)),
             cell(_tSupplier, txt(r.supplierName)),
-            cell(_tQty,      txt(fmt.format(r.receivedQty)), right: true),
-            cell(_tUnit,     txt(r.unit), center: true),
-            cell(_tStatus,   _statusBadge(r.statusLabel)),
-            cell(_tActions,  _actionsCell(), center: true),
+            cell(_tQty,
+                txt(fmt.format(r.receivedQty)), right: true),
+            cell(_tUnit, txt(r.unit), center: true),
+            cell(_tStatus, _statusBadge(r.statusLabel)),
+            cell(_tActions, _actionsCell(canDelete),
+                center: true),
           ]
               : [
-            cell(_mLotNo,   _lotNoWidget(r)),
-            cell(_mDate,    txt(_fmtDate(r.receiptDate), muted: true)),
-            cell(_mStatus,  _statusBadge(r.statusLabel)),
-            cell(_mActions, _actionsCell(), center: true),
+            cell(_mLotNo,  _lotNoWidget(r)),
+            cell(_mDate,
+                txt(_fmtDate(r.receiptDate), muted: true)),
+            cell(_mStatus, _statusBadge(r.statusLabel)),
+            cell(_mActions, _actionsCell(canDelete),
+                center: true),
           ],
         ),
       ),
@@ -624,9 +809,23 @@ class _TableRowState extends State<_TableRow> {
   }
 
   Widget _lotNoWidget(ReceivingSummary r) {
+    final isPending = r.syncStatus == 'pending';
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
+        if (isPending)
+          Tooltip(
+            message: 'Not yet synced to server',
+            child: Container(
+              width: 8,
+              height: 8,
+              margin: const EdgeInsets.only(right: 6),
+              decoration: const BoxDecoration(
+                color: AppColors.warning,
+                shape: BoxShape.circle,
+              ),
+            ),
+          ),
         Flexible(
           child: Text(
             r.lotNo,
@@ -642,13 +841,30 @@ class _TableRowState extends State<_TableRow> {
     );
   }
 
-  Widget _actionsCell() {
-    return _ActionBtn(
-      icon: Icons.edit_outlined,
-      bg: AppColors.greenLight,
-      iconColor: AppColors.green,
-      onTap: widget.onEdit,
-      tooltip: 'Edit',
+  // ✅ Actions cell: edit always shown, delete only when canDelete
+  Widget _actionsCell(bool canDelete) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        _ActionBtn(
+          icon:      Icons.edit_outlined,
+          bg:        AppColors.greenLight,
+          iconColor: AppColors.green,
+          onTap:     widget.onEdit,
+          tooltip:   'Edit',
+        ),
+        if (canDelete) ...[
+          const SizedBox(width: 6),
+          _ActionBtn(
+            icon:      Icons.delete_outline,
+            bg:        const Color(0xFFFEE2E2), // light red bg
+            iconColor: AppColors.error,
+            onTap:     widget.onDelete,
+            tooltip:   'Delete',
+          ),
+        ],
+      ],
     );
   }
 }
@@ -711,25 +927,28 @@ class _Pagination extends StatelessWidget {
     final end   = (currentPage * perPage).clamp(0, total);
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 13),
+      padding: const EdgeInsets.symmetric(
+          horizontal: 20, vertical: 13),
       decoration: const BoxDecoration(
         color: AppColors.white,
-        border: Border(top: BorderSide(color: AppColors.borderLight)),
+        border:
+        Border(top: BorderSide(color: AppColors.borderLight)),
         borderRadius: BorderRadius.only(
-          bottomLeft: Radius.circular(14),
+          bottomLeft:  Radius.circular(14),
           bottomRight: Radius.circular(14),
         ),
       ),
       child: Row(
         children: [
-          Text('Showing $start–$end of $total', style: AppTextStyles.caption()),
+          Text('Showing $start–$end of $total',
+              style: AppTextStyles.caption()),
           const Spacer(),
           Row(
             children: [
               _PageBtn(
-                icon: Icons.chevron_left,
+                icon:    Icons.chevron_left,
                 enabled: currentPage > 1,
-                onTap: () => onPage(currentPage - 1),
+                onTap:   () => onPage(currentPage - 1),
               ),
               const SizedBox(width: 4),
               ...List.generate(totalPages.clamp(0, 5), (i) {
@@ -738,16 +957,16 @@ class _Pagination extends StatelessWidget {
                 return Padding(
                   padding: const EdgeInsets.only(right: 4),
                   child: _PageBtn(
-                    label: '$p',
+                    label:  '$p',
                     active: active,
-                    onTap: () => onPage(p),
+                    onTap:  () => onPage(p),
                   ),
                 );
               }),
               _PageBtn(
-                icon: Icons.chevron_right,
+                icon:    Icons.chevron_right,
                 enabled: currentPage < totalPages,
-                onTap: () => onPage(currentPage + 1),
+                onTap:   () => onPage(currentPage + 1),
               ),
             ],
           ),
@@ -781,7 +1000,9 @@ class _PageBtn extends StatelessWidget {
         decoration: BoxDecoration(
           color: active ? AppColors.green : AppColors.white,
           borderRadius: BorderRadius.circular(7),
-          border: active ? null : Border.all(color: AppColors.borderLight),
+          border: active
+              ? null
+              : Border.all(color: AppColors.borderLight),
         ),
         child: Center(
           child: label != null
@@ -797,11 +1018,11 @@ class _PageBtn extends StatelessWidget {
                   : AppColors.textMuted,
             ),
           )
-              : Icon(
-            icon,
-            size: 18,
-            color: enabled ? AppColors.textMid : AppColors.textMuted,
-          ),
+              : Icon(icon,
+              size: 18,
+              color: enabled
+                  ? AppColors.textMid
+                  : AppColors.textMuted),
         ),
       ),
     );
@@ -823,28 +1044,22 @@ class _EmptyState extends StatelessWidget {
         child: Column(
           children: [
             Container(
-              width: 64,
-              height: 64,
+              width: 64, height: 64,
               decoration: BoxDecoration(
                 color: AppColors.greenLight,
                 borderRadius: BorderRadius.circular(16),
               ),
-              child: const Icon(
-                Icons.inventory_2_outlined,
-                size: 32,
-                color: AppColors.green,
-              ),
+              child: const Icon(Icons.inventory_2_outlined,
+                  size: 32, color: AppColors.green),
             ),
             const SizedBox(height: 14),
-            Text(
-              'No records found',
-              style: AppTextStyles.subheading(color: AppColors.textMuted),
-            ),
+            Text('No records found',
+                style: AppTextStyles.subheading(
+                    color: AppColors.textMuted)),
             const SizedBox(height: 4),
             Text(
-              'Create your first receiving record to get started',
-              style: AppTextStyles.caption(),
-            ),
+                'Create your first receiving record to get started',
+                style: AppTextStyles.caption()),
             const SizedBox(height: 20),
             MesButton(
               label: '+ Create First Record',
@@ -869,7 +1084,8 @@ class _ErrorState extends StatelessWidget {
       child: Center(
         child: Column(
           children: [
-            const Icon(Icons.wifi_off_outlined, size: 40, color: AppColors.textMuted),
+            const Icon(Icons.wifi_off_outlined,
+                size: 40, color: AppColors.textMuted),
             const SizedBox(height: 12),
             Text(message, style: AppTextStyles.body()),
             const SizedBox(height: 14),
@@ -885,9 +1101,6 @@ class _ErrorState extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────
-// Shimmer loader
-// ─────────────────────────────────────────────
 class _TableShimmer extends StatefulWidget {
   const _TableShimmer();
 
@@ -925,7 +1138,8 @@ class _TableShimmerState extends State<_TableShimmer>
           8,
               (i) => Container(
             height: 46,
-            margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+            margin: const EdgeInsets.symmetric(
+                horizontal: 14, vertical: 6),
             decoration: BoxDecoration(
               color: AppColors.borderLight.withOpacity(_anim.value),
               borderRadius: BorderRadius.circular(8),

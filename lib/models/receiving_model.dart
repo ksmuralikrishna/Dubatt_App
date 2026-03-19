@@ -1,4 +1,8 @@
 import 'dart:convert';
+
+// ─────────────────────────────────────────────
+// Dropdown options
+// ─────────────────────────────────────────────
 class MaterialOption {
   final String id;
   final String name;
@@ -14,13 +18,14 @@ class MaterialOption {
 
   factory MaterialOption.fromJson(Map<String, dynamic> json) {
     return MaterialOption(
-      id: json['id']?.toString() ?? '',
-      name: json['material_name']?.toString() ?? '',  // ✅ was 'name', API returns 'material_name'
+      id:   json['id']?.toString() ?? '',
+      name: json['material_name']?.toString() ?? '',
       code: json['material_code']?.toString(),
       unit: json['unit']?.toString(),
     );
   }
 }
+
 class SupplierOption {
   final String id;
   final String name;
@@ -34,12 +39,16 @@ class SupplierOption {
 
   factory SupplierOption.fromJson(Map<String, dynamic> json) {
     return SupplierOption(
-      id: json['id']?.toString() ?? '',
-      name: json['supplier_name']?.toString() ?? '',  // ✅ API returns 'supplier_name'
+      id:   json['id']?.toString() ?? '',
+      name: json['supplier_name']?.toString() ?? '',
       code: json['supplier_code']?.toString(),
     );
   }
 }
+
+// ─────────────────────────────────────────────
+// Receiving record (form / detail)
+// ─────────────────────────────────────────────
 class ReceivingRecord {
   final String? id;
   final String lotNo;
@@ -66,42 +75,50 @@ class ReceivingRecord {
   });
 
   factory ReceivingRecord.fromJson(Map<String, dynamic> json) {
-    final supplier = json['supplier'];
+    // supplier may be a nested object or plain id
+    final rawSupplier = json['supplier'];
     String? supplierId;
-    if (supplier is Map) {
-      supplierId = supplier['id']?.toString();       // ✅ extract id from nested object
+    if (rawSupplier is Map) {
+      supplierId = rawSupplier['id']?.toString();
     } else {
-      supplierId = json['supplier_id']?.toString();  // ✅ fallback to supplier_id
+      supplierId = json['supplier_id']?.toString();
+    }
+
+    // material may be a nested object or plain id
+    final rawMaterial = json['material'];
+    String? materialId;
+    if (rawMaterial is Map) {
+      materialId = rawMaterial['id']?.toString();
+    } else {
+      materialId = json['material_id']?.toString();
     }
 
     return ReceivingRecord(
       id:         json['id']?.toString(),
       lotNo:      json['lot_no']?.toString() ?? '',
-      docDate:    json['receipt_date']?.toString() ?? '',  // ✅ API uses receipt_date
+      docDate:    json['receipt_date']?.toString() ?? '',
       supplierId: supplierId,
-      materialId: json['material_id']?.toString()
-          ?? (json['material'] as Map?)?['id']?.toString(),
+      materialId: materialId,
       invoiceQty: _toDouble(json['invoice_qty']),
-      receiveQty: _toDouble(json['received_qty']),         // ✅ API uses received_qty
+      receiveQty: _toDouble(json['received_qty']),
       unit:       json['unit']?.toString(),
-      vehicleNo:  json['vehicle_number']?.toString(),      // ✅ API uses vehicle_number
+      vehicleNo:  json['vehicle_number']?.toString(),
       remarks:    json['remarks']?.toString(),
     );
   }
 
   Map<String, dynamic> toJson() => {
     if (id != null) 'id': id,
-    'receipt_date': docDate,
-    'lot_no': lotNo,
-    'supplier_id': supplierId,
+    'receipt_date':   docDate,
+    'lot_no':         lotNo,
+    'supplier_id':    supplierId,
     'vehicle_number': vehicleNo,
-    'material_id': materialId,
-    'invoice_qty': invoiceQty,
-    'received_qty': receiveQty,
-    'unit': unit,
-    'remarks': remarks,
+    'material_id':    materialId,
+    'invoice_qty':    invoiceQty,
+    'received_qty':   receiveQty,
+    'unit':           unit,
+    'remarks':        remarks,
   };
-
 
   ReceivingRecord copyWith({
     String? id,
@@ -116,16 +133,16 @@ class ReceivingRecord {
     String? remarks,
   }) {
     return ReceivingRecord(
-      id: id ?? this.id,
-      lotNo: lotNo ?? this.lotNo,
-      docDate: docDate ?? this.docDate,
+      id:         id         ?? this.id,
+      lotNo:      lotNo      ?? this.lotNo,
+      docDate:    docDate    ?? this.docDate,
       supplierId: supplierId ?? this.supplierId,
       materialId: materialId ?? this.materialId,
       invoiceQty: invoiceQty ?? this.invoiceQty,
       receiveQty: receiveQty ?? this.receiveQty,
-      unit: unit ?? this.unit,
-      vehicleNo: vehicleNo ?? this.vehicleNo,
-      remarks: remarks ?? this.remarks,
+      unit:       unit       ?? this.unit,
+      vehicleNo:  vehicleNo  ?? this.vehicleNo,
+      remarks:    remarks    ?? this.remarks,
     );
   }
 
@@ -137,37 +154,9 @@ class ReceivingRecord {
   }
 }
 
-class SaveResult {
-  final bool success;
-  final String? newId;
-  final String? errorMsg;
-  final Map<String, dynamic> fieldErrors;
-
-  const SaveResult({
-    required this.success,
-    this.newId,
-    this.errorMsg,
-    this.fieldErrors = const {},
-  });
-
-  factory SaveResult.fromJson(Map<String, dynamic> json) {
-    return SaveResult(
-      success: json['success'] as bool? ?? false,
-      newId: json['id']?.toString() ?? json['new_id']?.toString(),
-      errorMsg: json['message']?.toString() ?? json['error']?.toString(),
-      fieldErrors: json['errors'] as Map<String, dynamic>? ?? {},
-    );
-  }
-
-  factory SaveResult.error(String message, {Map<String, dynamic> errors = const {}}) {
-    return SaveResult(
-      success: false,
-      errorMsg: message,
-      fieldErrors: errors,
-    );
-  }
-}
-
+// ─────────────────────────────────────────────
+// Receiving summary (list screen)
+// ─────────────────────────────────────────────
 class ReceivingSummary {
   final String id;
   final String lotNo;
@@ -177,8 +166,9 @@ class ReceivingSummary {
   final String supplierName;
   final double receivedQty;
   final String unit;
-  final String statusLabel;  // "Pending", "Approved", "In Progress"
-  final int statusCode;      // 0, 1, 2
+  final String statusLabel;
+  final int statusCode;
+  final String syncStatus; // ✅ 'synced' | 'pending'
 
   const ReceivingSummary({
     required this.id,
@@ -191,8 +181,10 @@ class ReceivingSummary {
     required this.unit,
     required this.statusLabel,
     required this.statusCode,
+    this.syncStatus = 'synced',
   });
 
+  // ✅ From API response — always synced
   factory ReceivingSummary.fromJson(Map<String, dynamic> json) {
     final supplier = json['supplier'] as Map<String, dynamic>?;
     final material = json['material'] as Map<String, dynamic>?;
@@ -208,6 +200,28 @@ class ReceivingSummary {
       unit:             json['unit']?.toString() ?? '',
       statusLabel:      json['status_label']?.toString() ?? 'Pending',
       statusCode:       (json['status'] as num?)?.toInt() ?? 0,
+      syncStatus:       'synced',
+    );
+  }
+
+  // ✅ From local SQLite row
+  // Used for both cached server records AND offline-created records.
+  // syncStatus field tells the UI whether to show the orange pending dot.
+  factory ReceivingSummary.fromLocal(Map<String, dynamic> row) {
+    return ReceivingSummary(
+      // Use server_id when available, otherwise prefix with 'local_'
+      id:               row['server_id']?.toString() ??
+          'local_${row['local_id']}',
+      lotNo:            row['lot_no']?.toString() ?? '',
+      receiptDate:      row['receipt_date']?.toString() ?? '',
+      materialName:     row['material_name']?.toString() ?? '-',
+      materialCategory: '-',
+      supplierName:     row['supplier_name']?.toString() ?? '-',
+      receivedQty:      _toDouble(row['received_qty']) ?? 0.0,
+      unit:             row['unit']?.toString() ?? '',
+      statusLabel:      row['status_label']?.toString() ?? 'Pending',
+      statusCode:       (row['status_code'] as num?)?.toInt() ?? 0,
+      syncStatus:       row['sync_status']?.toString() ?? 'pending',
     );
   }
 
@@ -217,4 +231,48 @@ class ReceivingSummary {
     if (value is int) return value.toDouble();
     return double.tryParse(value.toString());
   }
+}
+
+// ─────────────────────────────────────────────
+// Save result
+// ─────────────────────────────────────────────
+class SaveResult {
+  final bool success;
+  final String? newId;
+  final String? errorMsg;
+  final Map<String, dynamic> fieldErrors;
+
+  const SaveResult({
+    required this.success,
+    this.newId,
+    this.errorMsg,
+    this.fieldErrors = const {},
+  });
+
+  factory SaveResult.error(String message,
+      {Map<String, dynamic> errors = const {}}) {
+    return SaveResult(
+      success:     false,
+      errorMsg:    message,
+      fieldErrors: errors,
+    );
+  }
+}
+
+// ─────────────────────────────────────────────
+// List result wrapper
+// ─────────────────────────────────────────────
+class ReceivingListResult {
+  final List<ReceivingSummary> records;
+  final int total;
+  final String? errorMsg;
+
+  bool get hasError => errorMsg != null;
+
+  ReceivingListResult({required this.records, required this.total})
+      : errorMsg = null;
+
+  ReceivingListResult.error(this.errorMsg)
+      : records = [],
+        total   = 0;
 }

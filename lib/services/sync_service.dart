@@ -5,7 +5,6 @@ import '../services/local_db_service.dart';
 import '../services/conflict_resolver.dart';
 import '../models/sync_queue_model.dart';
 import '../models/receiving_model.dart';
-import 'receiving_service.dart';
 
 enum SyncState { idle, syncing, done, failed }
 
