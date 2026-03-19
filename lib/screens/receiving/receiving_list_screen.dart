@@ -483,12 +483,12 @@ const double _tSupplier = 160.0;
 const double _tQty      = 110.0;
 const double _tUnit     = 70.0;
 const double _tStatus   = 120.0;
-const double _tActions  = 76.0; // ✅ widened: edit + delete side by side
+const double _tActions  = 96.0; // ✅ widened: edit + delete side by side
 
 const double _mLotNo    = 140.0;
 const double _mDate     = 110.0;
 const double _mStatus   = 120.0;
-const double _mActions  = 76.0; // ✅ widened
+const double _mActions  = 96.0; // ✅ widened
 
 // ─────────────────────────────────────────────
 // Records table
