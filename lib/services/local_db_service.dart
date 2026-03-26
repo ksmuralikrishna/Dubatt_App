@@ -3,6 +3,7 @@ import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import 'package:dubatt_app/models/receiving_model.dart';
 import 'package:dubatt_app/models/sync_queue_model.dart';
+import 'package:dubatt_app/models/acid_testing_model.dart';
 
 class LocalDbService {
   static final LocalDbService _i = LocalDbService._();
@@ -14,7 +15,7 @@ class LocalDbService {
   Future<void> init() async {
     _db = await openDatabase(
       join(await getDatabasesPath(), 'mes_offline.db'),
-      version: 1,
+      version: 2,
       onCreate: (db, version) async {
 
         // ── Sync queue — pending API operations
@@ -75,6 +76,48 @@ class LocalDbService {
             name      TEXT NOT NULL,
             extra     TEXT,
             cached_at TEXT NOT NULL
+          )
+        ''');
+
+        // ── 1. Add to onCreate in init() ─────────────────────────────────────────────
+
+        await db.execute('''
+          CREATE TABLE acid_testing_records (
+            local_id       INTEGER PRIMARY KEY AUTOINCREMENT,
+            server_id      TEXT,
+            lot_number     TEXT,
+            test_date      TEXT,
+            supplier_name  TEXT,
+            vehicle_number TEXT,
+            avg_pallet_weight           REAL,
+            foreign_material_weight     REAL,
+            avg_pallet_and_foreign_weight REAL,
+            received_qty   REAL,
+            status_label   TEXT DEFAULT 'Pending',
+            status_code    INTEGER DEFAULT 0,
+            sync_status    TEXT DEFAULT 'synced',
+            updated_at     TEXT,
+            created_at     TEXT
+          )
+        ''');
+
+        await db.execute('''
+          CREATE UNIQUE INDEX IF NOT EXISTS idx_acid_testing_server_id
+          ON acid_testing_records (server_id)
+          WHERE server_id IS NOT NULL
+        ''');
+
+        await db.execute('''
+          CREATE TABLE acid_lot_cache (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            lot_no     TEXT NOT NULL,
+            supplier_name TEXT,
+            supplier_id   TEXT,
+            vehicle_number TEXT,
+            received_qty  REAL,
+            invoice_qty   REAL,
+            receipt_date  TEXT,
+            cached_at  TEXT NOT NULL
           )
         ''');
       },
@@ -289,4 +332,93 @@ class LocalDbService {
     );
     return result.first['count'] as int;
   }
+
+  // ── Acid Testing: cache server records ───────────────────────────────────
+  Future<void> cacheAcidTestings(List<AcidTestingSummary> records) async {
+    final batch = db.batch();
+    for (final r in records) {
+      batch.rawInsert('''
+        INSERT OR IGNORE INTO acid_testing_records
+          (server_id, lot_number, test_date, supplier_name, vehicle_number,
+           avg_pallet_weight, foreign_material_weight, avg_pallet_and_foreign_weight,
+           received_qty, status_label, status_code, sync_status,
+           updated_at, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'synced', datetime('now'), ?)
+      ''', [
+        r.id, r.lotNumber, r.testDate, r.supplierName, r.vehicleNumber,
+        r.avgPalletWeight, r.foreignMaterialWeight, r.avgPalletAndForeignWeight,
+        r.receivedQty, r.statusLabel, r.statusCode, r.testDate,
+      ]);
+
+      batch.rawUpdate('''
+        UPDATE acid_testing_records
+        SET lot_number=?, test_date=?, supplier_name=?, vehicle_number=?,
+            avg_pallet_weight=?, foreign_material_weight=?,
+            avg_pallet_and_foreign_weight=?, received_qty=?,
+            status_label=?, status_code=?, sync_status='synced',
+            updated_at=datetime('now')
+        WHERE server_id=? AND sync_status='synced'
+      ''', [
+        r.lotNumber, r.testDate, r.supplierName, r.vehicleNumber,
+        r.avgPalletWeight, r.foreignMaterialWeight, r.avgPalletAndForeignWeight,
+        r.receivedQty, r.statusLabel, r.statusCode, r.id,
+      ]);
+    }
+    await batch.commit(noResult: true);
+  }
+
+  Future<List<Map<String, dynamic>>> getAllAcidTestingsForDisplay() async {
+    return await db.query('acid_testing_records', orderBy: 'created_at DESC');
+  }
+
+  Future<List<Map<String, dynamic>>> getQueuedAcidTestings() async {
+    final rows = await db.query(
+      'sync_queue',
+      where: 'operation = ? AND table_name = ?',
+      whereArgs: [SyncOperation.opCreate, 'acid-testings'],
+      orderBy: 'created_at DESC',
+    );
+    return rows.map((row) {
+      final payload =
+          jsonDecode(row['payload'] as String) as Map<String, dynamic>;
+      return {
+        'queue_id':   row['id'],
+        'created_at': row['created_at'],
+        'payload':    payload,
+      };
+    }).toList();
+  }
+
+  // ── Acid lot cache ────────────────────────────────────────────────────────
+  Future<void> cacheAcidLots(List<LotOption> lots) async {
+    final batch = db.batch();
+    batch.delete('acid_lot_cache');
+    for (final l in lots) {
+      batch.insert('acid_lot_cache', {
+        'lot_no':        l.lotNo,
+        'supplier_name': l.supplierName,
+        'supplier_id':   l.supplierId,
+        'vehicle_number': l.vehicleNumber,
+        'received_qty':  l.receivedQty,
+        'invoice_qty':   l.invoiceQty,
+        'receipt_date':  l.receiptDate,
+        'cached_at':     DateTime.now().toIso8601String(),
+      });
+    }
+    await batch.commit(noResult: true);
+  }
+
+  Future<List<LotOption>> getCachedAcidLots() async {
+    final rows = await db.query('acid_lot_cache', orderBy: 'lot_no ASC');
+    return rows.map((r) => LotOption(
+      lotNo:         r['lot_no'] as String,
+      supplierName:  r['supplier_name'] as String? ?? '',
+      supplierId:    r['supplier_id'] as String?,
+      vehicleNumber: r['vehicle_number'] as String?,
+      receivedQty:   r['received_qty'] as double?,
+      invoiceQty:    r['invoice_qty'] as double?,
+      receiptDate:   r['receipt_date'] as String?,
+    )).toList();
+  }
+
 }

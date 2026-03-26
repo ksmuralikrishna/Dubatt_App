@@ -50,6 +50,7 @@ class _ReceivingFormScreenState extends State<ReceivingFormScreen> {
   bool _isLoading    = true;
   bool _isSaving     = false;
   bool _isSubmitting = false; // ✅ separate loading state for submit
+
   Map<String, String> _fieldErrors = {};
   String? _currentId;
 

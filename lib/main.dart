@@ -1,3 +1,6 @@
+import 'dart:io';                                          // ✅ add
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';     // ✅ add
+
 import 'package:dubatt_app/services/connectivity_service.dart';
 import 'package:dubatt_app/services/local_db_service.dart';
 import 'package:flutter/material.dart';
@@ -9,9 +12,10 @@ import 'screens/dashboard/dashboard_screen.dart';
 import 'screens/receiving/receiving_list_screen.dart';
 import 'screens/receiving/receiving_form_screen.dart';
 
+
 // ── Uncomment each import as you create the screen files
-// import 'screens/acid_testing/acid_testing_list_screen.dart';
-// import 'screens/acid_testing/acid_testing_form_screen.dart';
+import 'screens/acid_testing/acid_testing_list_screen.dart';
+import 'screens/acid_testing/acid_testing_form_screen.dart';
 // import 'screens/bbsu/bbsu_list_screen.dart';
 // import 'screens/bbsu/bbsu_form_screen.dart';
 // import 'screens/smelting/smelting_list_screen.dart';
@@ -21,6 +25,12 @@ import 'screens/receiving/receiving_form_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // ✅ Initialize sqflite for desktop/web platforms
+  if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+    sqfliteFfiInit();
+    databaseFactory = databaseFactoryFfi;
+  }
 
   await SystemChrome.setPreferredOrientations([
     DeviceOrientation.landscapeLeft,
@@ -74,20 +84,19 @@ class MesApp extends StatelessWidget {
     }
 
     // ── Acid Testing ───────────────────────────────────────────
-    // Uncomment once screen files are created
-    // if (name == '/acid-testing') {
-    //   return _slide(AcidTestingListScreen(onLogout: root._onLogout));
-    // }
-    // if (name == '/acid-testing/create') {
-    //   return _slide(AcidTestingFormScreen(onLogout: root._onLogout));
-    // }
-    // if (name.startsWith('/acid-testing/') && name.endsWith('/edit')) {
-    //   final id = name
-    //       .replaceFirst('/acid-testing/', '')
-    //       .replaceFirst('/edit', '');
-    //   return _slide(AcidTestingFormScreen(
-    //       recordId: id, onLogout: root._onLogout));
-    // }
+    if (name == '/acid-testing') {
+      return _slide(AcidTestingListScreen(onLogout: root._onLogout));
+    }
+    if (name == '/acid-testing/create') {
+      return _slide(AcidTestingFormScreen(onLogout: root._onLogout));
+    }
+    if (name.startsWith('/acid-testing/') && name.endsWith('/edit')) {
+      final id = name
+          .replaceFirst('/acid-testing/', '')
+          .replaceFirst('/edit', '');
+      return _slide(AcidTestingFormScreen(
+          recordId: id, onLogout: root._onLogout));
+    }
 
     // ── BBSU ───────────────────────────────────────────────────
     // if (name == '/bbsu') {
