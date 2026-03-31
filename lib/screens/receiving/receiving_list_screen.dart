@@ -9,6 +9,7 @@ import '../../models/receiving_model.dart';
 import '../../services/receiving_service.dart';
 import 'package:dubatt_app/services/connectivity_service.dart';
 import 'receiving_form_screen.dart';
+import 'package:dubatt_app/services/sync_service.dart';
 
 class ReceivingListScreen extends StatefulWidget {
   final VoidCallback onLogout;
@@ -37,20 +38,37 @@ class _ReceivingListScreenState extends State<ReceivingListScreen> {
   final _statusOptions = const [
     {'value': 'all',         'label': 'All Status'},
     {'value': 'pending',     'label': 'Pending'},
-    {'value': 'approved',    'label': 'Approved'},
+    {'value': 'approved', 'label': 'Submitted'},
     {'value': 'in_progress', 'label': 'In Progress'},
   ];
 
+  // @override
+  // void initState() {
+  //   super.initState();
+  //   _load();
+  //
+  //   _connectivitySub = ConnectivityService().onlineStream.listen((online) {
+  //     if (online && mounted) {
+  //       _load(reset: true);
+  //     }
+  //   });
+  // }
+
+  // AFTER:
   @override
   void initState() {
     super.initState();
     _load();
 
+    // Reload when device comes back online (shows cached → live data)
     _connectivitySub = ConnectivityService().onlineStream.listen((online) {
-      if (online && mounted) {
-        _load(reset: true);
-      }
+      if (online && mounted) _load(reset: true);
     });
+
+    // ✅ Reload after AppSyncManager finishes syncing offline records
+    SyncService().onStateChanged = (state) {
+      if (state == SyncState.idle && mounted) _load(reset: true);
+    };
   }
 
   @override
@@ -692,6 +710,10 @@ class _TableRowState extends State<_TableRow> {
   Widget _statusBadge(String label) {
     Color bg, fg;
     switch (label.toLowerCase()) {
+      case 'submitted':
+        bg = const Color(0xFFDCFCE7);
+        fg = const Color(0xFF16A34A);
+        break;
       case 'approved':
         bg = const Color(0xFFDCFCE7);
         fg = const Color(0xFF16A34A);

@@ -4,7 +4,7 @@ import 'package:path/path.dart';
 import 'package:dubatt_app/models/receiving_model.dart';
 import 'package:dubatt_app/models/sync_queue_model.dart';
 import 'package:dubatt_app/models/acid_testing_model.dart';
-
+import 'package:dubatt_app/models/bbsu_model.dart';
 class LocalDbService {
   static final LocalDbService _i = LocalDbService._();
   factory LocalDbService() => _i;
@@ -15,7 +15,7 @@ class LocalDbService {
   Future<void> init() async {
     _db = await openDatabase(
       join(await getDatabasesPath(), 'mes_offline.db'),
-      version: 2,
+      version: 4,
       onCreate: (db, version) async {
 
         // ── Sync queue — pending API operations
@@ -120,7 +120,113 @@ class LocalDbService {
             cached_at  TEXT NOT NULL
           )
         ''');
+
+
+  await db.execute('''
+    CREATE TABLE bbsu_records (
+      local_id       INTEGER PRIMARY KEY AUTOINCREMENT,
+      server_id      TEXT,
+      batch_no       TEXT,
+      doc_date       TEXT,
+      category       TEXT,
+      start_time     TEXT,
+      end_time       TEXT,
+      status_label   TEXT DEFAULT 'Draft',
+      status_code    INTEGER DEFAULT 0,
+      sync_status    TEXT DEFAULT 'synced',
+      updated_at     TEXT,
+      created_at     TEXT
+    )
+  ''');
+
+  await db.execute('''
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_bbsu_server_id
+    ON bbsu_records (server_id)
+    WHERE server_id IS NOT NULL
+  ''');
+
+  await db.execute('''
+    CREATE TABLE bbsu_lot_cache (
+      id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      lot_number    TEXT NOT NULL,
+      supplier_name TEXT,
+      received_qty  REAL,
+      acid_pct      REAL,
+      cached_at     TEXT NOT NULL
+    )
+  ''');
+        await db.execute('''
+    CREATE TABLE bbsu_acid_summary_cache (
+      id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+      lot_number           TEXT NOT NULL,
+      lot_no               TEXT,
+      material_description TEXT,
+      avg_acid_pct         REAL,
+      net_weight           REAL,
+      unit                 TEXT,
+      cached_at            TEXT NOT NULL
+    )
+  ''');
+
+        await db.execute('''
+    CREATE INDEX IF NOT EXISTS idx_acid_summary_lot
+    ON bbsu_acid_summary_cache (lot_number)
+  ''');
+
+
+
       },
+      onUpgrade: (db, oldVersion, newVersion) async {
+        if (oldVersion < 4) {
+          await db.execute('''
+          CREATE TABLE IF NOT EXISTS bbsu_records (
+            local_id       INTEGER PRIMARY KEY AUTOINCREMENT,
+            server_id      TEXT,
+            batch_no       TEXT,
+            doc_date       TEXT,
+            category       TEXT,
+            start_time     TEXT,
+            end_time       TEXT,
+            status_label   TEXT DEFAULT 'Draft',
+            status_code    INTEGER DEFAULT 0,
+            sync_status    TEXT DEFAULT 'synced',
+            updated_at     TEXT,
+            created_at     TEXT
+          )
+        ''');
+          await db.execute('''
+          CREATE UNIQUE INDEX IF NOT EXISTS idx_bbsu_server_id
+          ON bbsu_records (server_id)
+          WHERE server_id IS NOT NULL
+        ''');
+          await db.execute('''
+          CREATE TABLE IF NOT EXISTS bbsu_lot_cache (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            lot_number    TEXT NOT NULL,
+            supplier_name TEXT,
+            received_qty  REAL,
+            acid_pct      REAL,
+            cached_at     TEXT NOT NULL
+          )
+        ''');
+          await db.execute('''
+      CREATE TABLE IF NOT EXISTS bbsu_acid_summary_cache (
+        id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+        lot_number           TEXT NOT NULL,
+        lot_no               TEXT,
+        material_description TEXT,
+        avg_acid_pct         REAL,
+        net_weight           REAL,
+        unit                 TEXT,
+        cached_at            TEXT NOT NULL
+      )
+    ''');
+          await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_acid_summary_lot
+      ON bbsu_acid_summary_cache (lot_number)
+    ''');
+        }
+      }
     );
   }
 
@@ -419,6 +525,151 @@ class LocalDbService {
       invoiceQty:    r['invoice_qty'] as double?,
       receiptDate:   r['receipt_date'] as String?,
     )).toList();
+  }
+  Future<void> cacheBbsuRecords(List<BbsuSummary> records) async {
+    final batch = db.batch();
+    for (final r in records) {
+      batch.rawInsert('''
+        INSERT OR IGNORE INTO bbsu_records
+          (server_id, batch_no, doc_date, category, start_time, end_time,
+           status_label, status_code, sync_status, updated_at, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'synced', datetime('now'), ?)
+      ''', [
+        r.id, r.batchNo, r.docDate, r.category,
+        r.startTime, r.endTime,
+        r.statusLabel, r.statusCode, r.docDate,
+      ]);
+
+      batch.rawUpdate('''
+        UPDATE bbsu_records
+        SET batch_no=?, doc_date=?, category=?, start_time=?, end_time=?,
+            status_label=?, status_code=?, sync_status='synced',
+            updated_at=datetime('now')
+        WHERE server_id=? AND sync_status='synced'
+      ''', [
+        r.batchNo, r.docDate, r.category,
+        r.startTime, r.endTime,
+        r.statusLabel, r.statusCode, r.id,
+      ]);
+    }
+    await batch.commit(noResult: true);
+  }
+
+  Future<List<Map<String, dynamic>>> getAllBbsuForDisplay() async {
+    return await db.query('bbsu_records', orderBy: 'created_at DESC');
+  }
+
+  Future<List<Map<String, dynamic>>> getQueuedBbsu() async {
+    final rows = await db.query(
+      'sync_queue',
+      where: 'operation = ? AND table_name = ?',
+      whereArgs: [SyncOperation.opCreate, 'bbsu-batches'],
+      orderBy: 'created_at DESC',
+    );
+    return rows.map((row) {
+      final payload =
+      jsonDecode(row['payload'] as String) as Map<String, dynamic>;
+      return {
+        'queue_id':   row['id'],
+        'created_at': row['created_at'],
+        'payload':    payload,
+      };
+    }).toList();
+  }
+
+  // ── BBSU lot cache ─────────────────────────────────────────────────────────
+  Future<void> cacheBbsuLots(List<BbsuLotOption> lots) async {
+    final batch = db.batch();
+    batch.delete('bbsu_lot_cache');
+    for (final l in lots) {
+      batch.insert('bbsu_lot_cache', {
+        'lot_number':   l.lotNumber,
+        'supplier_name': l.supplierName,
+        'received_qty': l.receivedQty,
+        'acid_pct':     l.acidPct,
+        'cached_at':    DateTime.now().toIso8601String(),
+      });
+    }
+    await batch.commit(noResult: true);
+  }
+
+  Future<List<BbsuLotOption>> getCachedBbsuLots() async {
+    final rows = await db.query('bbsu_lot_cache', orderBy: 'lot_number ASC');
+    return rows.map((r) => BbsuLotOption(
+      lotNumber:    r['lot_number'] as String,
+      supplierName: r['supplier_name'] as String?,
+      receivedQty:  r['received_qty'] as double?,
+      acidPct:      r['acid_pct'] as double?,
+    )).toList();
+  }
+  // ── BBSU acid summary cache ────────────────────────────────────────────────
+  // Stores all rows returned by /bbsu-batches/acid-summary/:lotNo.
+  // Per-lot replace: all existing rows for the lot are deleted first,
+  // then the fresh rows are inserted.
+
+  Future<void> cacheAcidSummary(
+      String lotNumber,
+      List<Map<String, dynamic>> rows,
+      ) async {
+    final batch = db.batch();
+
+    // Delete all existing rows for this lot before re-inserting
+    batch.delete(
+      'bbsu_acid_summary_cache',
+      where: 'lot_number = ?',
+      whereArgs: [lotNumber],
+    );
+
+    final now = DateTime.now().toIso8601String();
+    for (final row in rows) {
+      batch.insert('bbsu_acid_summary_cache', {
+        'lot_number':           lotNumber,
+        'lot_no':               row['lot_no']?.toString(),
+        'material_description': row['material_description']?.toString(),
+        'avg_acid_pct':         _toDoubleOrNull(row['avg_acid_pct']),
+        'net_weight':           _toDoubleOrNull(row['net_weight']),
+        'unit':                 row['unit']?.toString(),
+        'cached_at':            now,
+      });
+    }
+
+    await batch.commit(noResult: true);
+  }
+
+  Future<List<Map<String, dynamic>>> getCachedAcidSummary(
+      String lotNumber) async {
+    final rows = await db.query(
+      'bbsu_acid_summary_cache',
+      where: 'lot_number = ?',
+      whereArgs: [lotNumber],
+      orderBy: 'id ASC',
+    );
+
+    // Return as plain maps so the caller (BbsuService / _QtyModal)
+    // gets the same shape as the API response.
+    return rows.map((r) => {
+      'lot_no':               r['lot_no'],
+      'material_description': r['material_description'],
+      'avg_acid_pct':         r['avg_acid_pct'],
+      'net_weight':           r['net_weight'],
+      'unit':                 r['unit'],
+    }).toList();
+  }
+
+  /// Returns true when at least one cached row exists for this lot.
+  Future<bool> hasAcidSummaryCache(String lotNumber) async {
+    final result = await db.rawQuery(
+      'SELECT COUNT(*) as count FROM bbsu_acid_summary_cache WHERE lot_number = ?',
+      [lotNumber],
+    );
+    return (result.first['count'] as int) > 0;
+  }
+
+  static double? _toDoubleOrNull(dynamic v) {
+    if (v == null) return null;
+    if (v is double) return v;
+    if (v is int) return v.toDouble();
+    return double.tryParse(v.toString());
   }
 
 }

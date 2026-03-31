@@ -60,6 +60,7 @@ class ReceivingRecord {
   final String? unit;
   final String? vehicleNo;
   final String? remarks;
+  final String? status;
 
   const ReceivingRecord({
     this.id,
@@ -72,6 +73,7 @@ class ReceivingRecord {
     this.unit,
     this.vehicleNo,
     this.remarks,
+    this.status,
   });
 
   factory ReceivingRecord.fromJson(Map<String, dynamic> json) {
@@ -104,6 +106,7 @@ class ReceivingRecord {
       unit:       json['unit']?.toString(),
       vehicleNo:  json['vehicle_number']?.toString(),
       remarks:    json['remarks']?.toString(),
+      status:    json['status']?.toString(),
     );
   }
 
@@ -118,6 +121,7 @@ class ReceivingRecord {
     'received_qty':   receiveQty,
     'unit':           unit,
     'remarks':        remarks,
+    'status':         status,
   };
 
   ReceivingRecord copyWith({
@@ -131,6 +135,7 @@ class ReceivingRecord {
     String? unit,
     String? vehicleNo,
     String? remarks,
+    String? status,
   }) {
     return ReceivingRecord(
       id:         id         ?? this.id,
@@ -143,6 +148,7 @@ class ReceivingRecord {
       unit:       unit       ?? this.unit,
       vehicleNo:  vehicleNo  ?? this.vehicleNo,
       remarks:    remarks    ?? this.remarks,
+      status:    status      ?? this.status,
     );
   }
 
@@ -198,7 +204,9 @@ class ReceivingSummary {
       supplierName:     supplier?['supplier_name']?.toString() ?? '-',
       receivedQty:      _toDouble(json['received_qty']) ?? 0.0,
       unit:             json['unit']?.toString() ?? '',
-      statusLabel:      json['status_label']?.toString() ?? 'Pending',
+      // statusLabel:      json['status_label']?.toString() ?? 'Pending',
+      statusLabel: _mapStatusLabel(json['status_label']?.toString() ?? 'Pending'),
+
       statusCode:       (json['status'] as num?)?.toInt() ?? 0,
       syncStatus:       'synced',
     );
@@ -219,7 +227,8 @@ class ReceivingSummary {
       supplierName:     row['supplier_name']?.toString() ?? '-',
       receivedQty:      _toDouble(row['received_qty']) ?? 0.0,
       unit:             row['unit']?.toString() ?? '',
-      statusLabel:      row['status_label']?.toString() ?? 'Pending',
+      statusLabel: _mapStatusLabel(row['status_label']?.toString() ?? 'Pending'),
+
       statusCode:       (row['status_code'] as num?)?.toInt() ?? 0,
       syncStatus:       row['sync_status']?.toString() ?? 'pending',
     );
@@ -230,6 +239,10 @@ class ReceivingSummary {
     if (value is double) return value;
     if (value is int) return value.toDouble();
     return double.tryParse(value.toString());
+  }
+  static String _mapStatusLabel(String label) {
+    if (label.toLowerCase() == 'approved') return 'Submitted';
+    return label;
   }
 }
 

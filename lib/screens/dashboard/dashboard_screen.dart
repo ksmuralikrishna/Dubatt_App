@@ -37,13 +37,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _loadData();
 
     // ── Auto-sync when coming back online
-    ConnectivityService().onlineStream.listen((online) {
-      if (online && mounted) {
-        SyncService().syncAll().then((_) {
-          if (mounted) _loadData(); // refresh after sync
-        });
-      }
-    });
+    // ConnectivityService().onlineStream.listen((online) {
+    //   if (online && mounted) {
+    //     SyncService().syncAll().then((_) {
+    //       if (mounted) _loadData(); // refresh after sync
+    //     });
+    //   }
+    // });
 
     // ── Rebuild UI on sync state changes (badge update)
     SyncService().onStateChanged = (state) {

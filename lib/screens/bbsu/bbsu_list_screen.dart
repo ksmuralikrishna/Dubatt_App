@@ -1,19 +1,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// acid_testing_list_screen.dart
-// List screen for Acid Testing module.
-//
-// Mirrors receiving_list_screen.dart structure exactly:
-//   • AppShell scaffold wrapper
-//   • Offline banner (ConnectivityService stream)
-//   • MesPageHeader with "Create New" action
-//   • Search + status filter bar
-//   • Count bar with clear filters
-//   • Scrollable data table with hover, sort, edit/delete actions
-//   • Pagination footer
-//   • Shimmer loading, empty state, error state
+// bbsu_list_screen.dart
+// List screen for the BBSU module.
 //
 // Columns (from Laravel Blade list):
-//   Test Date | Lot No | Vehicle No | Supplier | In-House Wt | Avg P&F Wt | Pallets | Status | Actions
+//   Date | Doc No | Start Time | End Time | Category | Status | Actions
 // ─────────────────────────────────────────────────────────────────────────────
 
 import 'dart:async';
@@ -23,26 +13,25 @@ import 'package:intl/intl.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/common/widgets.dart';
 import '../../widgets/common/app_shell.dart';
-import '../../models/acid_testing_model.dart';
-import '../../services/acid_testing_service.dart';
+import '../../models/bbsu_model.dart';
+import '../../services/bbsu_service.dart';
 import '../../services/connectivity_service.dart';
-import 'acid_testing_form_screen.dart';
+import 'bbsu_form_screen.dart';
 
-class AcidTestingListScreen extends StatefulWidget {
+class BbsuListScreen extends StatefulWidget {
   final VoidCallback onLogout;
-  const AcidTestingListScreen({super.key, required this.onLogout});
+  const BbsuListScreen({super.key, required this.onLogout});
 
   @override
-  State<AcidTestingListScreen> createState() =>
-      _AcidTestingListScreenState();
+  State<BbsuListScreen> createState() => _BbsuListScreenState();
 }
 
-class _AcidTestingListScreenState extends State<AcidTestingListScreen> {
+class _BbsuListScreenState extends State<BbsuListScreen> {
   final _searchCtrl = TextEditingController();
   Timer? _debounce;
   StreamSubscription<bool>? _connectivitySub;
 
-  List<AcidTestingSummary> _records = [];
+  List<BbsuSummary> _records = [];
   bool _isLoading = true;
   String? _errorMsg;
   int _total = 0;
@@ -50,22 +39,21 @@ class _AcidTestingListScreenState extends State<AcidTestingListScreen> {
   static const _perPage = 20;
 
   String _statusFilter = 'all';
-  String _sortBy       = 'test_date';
-  String _sortOrder    = 'desc';
 
   final _statusOptions = const [
     {'value': 'all',       'label': 'All Status'},
-    {'value': 'draft',     'label': 'Draft'},
-    {'value': 'submitted', 'label': 'Submitted'},
+    {'value': '0',         'label': 'Draft'},
+    {'value': '1',         'label': 'Submitted'},
   ];
 
   @override
   void initState() {
     super.initState();
     _load();
-    _connectivitySub = ConnectivityService().onlineStream.listen((online) {
-      if (online && mounted) _load(reset: true);
-    });
+    _connectivitySub =
+        ConnectivityService().onlineStream.listen((online) {
+          if (online && mounted) _load(reset: true);
+        });
   }
 
   @override
@@ -78,9 +66,12 @@ class _AcidTestingListScreenState extends State<AcidTestingListScreen> {
 
   Future<void> _load({bool reset = false}) async {
     if (reset) _currentPage = 1;
-    setState(() { _isLoading = true; _errorMsg = null; });
+    setState(() {
+      _isLoading = true;
+      _errorMsg  = null;
+    });
 
-    final result = await AcidTestingService().getList(
+    final result = await BbsuService().getList(
       page:    _currentPage,
       perPage: _perPage,
       search:  _searchCtrl.text.trim(),
@@ -99,7 +90,7 @@ class _AcidTestingListScreenState extends State<AcidTestingListScreen> {
     });
   }
 
-  void _onSearchChanged(String v) {
+  void _onSearchChanged(String _) {
     _debounce?.cancel();
     _debounce = Timer(
         const Duration(milliseconds: 350), () => _load(reset: true));
@@ -107,31 +98,25 @@ class _AcidTestingListScreenState extends State<AcidTestingListScreen> {
 
   void _openForm({String? id}) async {
     await Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => AcidTestingFormScreen(
-        recordId: id,
-        onLogout: widget.onLogout,
-      ),
+      builder: (_) =>
+          BbsuFormScreen(recordId: id, onLogout: widget.onLogout),
     ));
     _load(reset: true);
   }
 
-  Future<void> _confirmDelete(AcidTestingSummary record) async {
+  Future<void> _confirmDelete(BbsuSummary record) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(14)),
-        title: Text(
-          'Delete record?',
-          style: GoogleFonts.outfit(
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-            color: AppColors.textDark,
-          ),
-        ),
+        title: Text('Delete record?',
+            style: GoogleFonts.outfit(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textDark)),
         content: Text(
-          'Lot "${record.lotNumber}" will be permanently deleted. '
-              'This cannot be undone.',
+          'Batch "${record.batchNo}" will be permanently deleted.',
           style: GoogleFonts.outfit(
               fontSize: 14, color: AppColors.textMid),
         ),
@@ -139,8 +124,8 @@ class _AcidTestingListScreenState extends State<AcidTestingListScreen> {
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
             child: Text('Cancel',
-                style:
-                GoogleFonts.outfit(color: AppColors.textMuted)),
+                style: GoogleFonts.outfit(
+                    color: AppColors.textMuted)),
           ),
           ElevatedButton(
             onPressed: () => Navigator.of(ctx).pop(true),
@@ -160,11 +145,10 @@ class _AcidTestingListScreenState extends State<AcidTestingListScreen> {
     );
 
     if (confirmed != true) return;
-
-    final error = await AcidTestingService().delete(record.id);
+    final error = await BbsuService().delete(record.id);
     if (!mounted) return;
     if (error == null) {
-      _showSnack('Record deleted successfully.');
+      _showSnack('Record deleted.');
       _load(reset: true);
     } else {
       _showSnack(error, error: true);
@@ -173,25 +157,24 @@ class _AcidTestingListScreenState extends State<AcidTestingListScreen> {
 
   void _showSnack(String msg, {bool error = false}) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Row(
-        children: [
-          Icon(
-            error ? Icons.error_outline : Icons.check_circle_outline,
-            color: Colors.white,
-            size: 16,
-          ),
-          const SizedBox(width: 8),
-          Expanded(
+      content: Row(children: [
+        Icon(
+          error
+              ? Icons.error_outline
+              : Icons.check_circle_outline,
+          color: Colors.white,
+          size: 16,
+        ),
+        const SizedBox(width: 8),
+        Expanded(
             child: Text(msg,
                 style: GoogleFonts.outfit(
-                    color: Colors.white, fontSize: 13)),
-          ),
-        ],
-      ),
+                    color: Colors.white, fontSize: 13))),
+      ]),
       backgroundColor: error ? AppColors.error : AppColors.green,
       behavior: SnackBarBehavior.floating,
-      shape:
-      RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
+      shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(9)),
       margin: const EdgeInsets.all(16),
       duration: const Duration(seconds: 3),
     ));
@@ -206,20 +189,18 @@ class _AcidTestingListScreenState extends State<AcidTestingListScreen> {
     final isTablet = Responsive.isTablet(context);
 
     return AppShell(
-      currentRoute: '/acid-testing',
+      currentRoute: '/bbsu',
       onLogout: widget.onLogout,
       child: Column(
         children: [
           Expanded(
             child: SingleChildScrollView(
-              padding:
-              EdgeInsets.fromLTRB(hPad, 28, hPad, 24),
+              padding: EdgeInsets.fromLTRB(hPad, 28, hPad, 24),
               child: ConstrainedBox(
                 constraints:
                 const BoxConstraints(maxWidth: 1200),
                 child: Column(
-                  crossAxisAlignment:
-                  CrossAxisAlignment.start,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
 
                     // ── Offline banner ─────────────────────
@@ -233,17 +214,16 @@ class _AcidTestingListScreenState extends State<AcidTestingListScreen> {
                         return _OfflineBanner(
                           message:
                           'You are offline. Showing cached data. '
-                              'New records will sync when '
-                              'connection restores.',
+                              'New records will sync when connection restores.',
                         );
                       },
                     ),
 
                     // ── Page header ────────────────────────
                     MesPageHeader(
-                      title: 'Acid Testing',
+                      title: 'Battery Breaking & Separation',
                       subtitle:
-                      'Manage acid testing records and pallet logs',
+                      'Manage BBSU batch records and submissions',
                       actions: [
                         MesButton(
                           label: 'Create New',
@@ -269,7 +249,7 @@ class _AcidTestingListScreenState extends State<AcidTestingListScreen> {
                     ),
                     const SizedBox(height: 10),
 
-                    // ── Count + clear ──────────────────────
+                    // ── Count bar ──────────────────────────
                     _CountBar(
                       total: _total,
                       hasFilters:
@@ -277,8 +257,7 @@ class _AcidTestingListScreenState extends State<AcidTestingListScreen> {
                           _statusFilter != 'all',
                       onClear: () {
                         _searchCtrl.clear();
-                        setState(
-                                () => _statusFilter = 'all');
+                        setState(() => _statusFilter = 'all');
                         _load(reset: true);
                       },
                     ),
@@ -294,34 +273,14 @@ class _AcidTestingListScreenState extends State<AcidTestingListScreen> {
                               : _errorMsg != null
                               ? _ErrorState(
                             message: _errorMsg!,
-                            onRetry: () => _load(),
+                            onRetry: _load,
                           )
                               : _records.isEmpty
                               ? _EmptyState(
-                              onCreate: () =>
-                                  _openForm())
+                              onCreate: _openForm)
                               : _RecordsTable(
                             records:   _records,
                             isTablet:  isTablet,
-                            sortBy:    _sortBy,
-                            sortOrder: _sortOrder,
-                            onSort: (col) {
-                              setState(() {
-                                if (_sortBy ==
-                                    col) {
-                                  _sortOrder =
-                                  _sortOrder ==
-                                      'asc'
-                                      ? 'desc'
-                                      : 'asc';
-                                } else {
-                                  _sortBy    = col;
-                                  _sortOrder =
-                                  'desc';
-                                }
-                              });
-                              _load();
-                            },
                             onEdit: (id) =>
                                 _openForm(id: id),
                             onDelete:
@@ -362,7 +321,7 @@ class _AcidTestingListScreenState extends State<AcidTestingListScreen> {
         style: GoogleFonts.outfit(
             fontSize: 13.5, color: AppColors.textDark),
         decoration: InputDecoration(
-          hintText: 'Search by lot no, supplier, vehicle…',
+          hintText: 'Search by batch no, category…',
           hintStyle: GoogleFonts.outfit(
               fontSize: 13.5, color: AppColors.textMuted),
           prefixIcon: const Icon(Icons.search,
@@ -435,7 +394,7 @@ class _AcidTestingListScreenState extends State<AcidTestingListScreen> {
 }
 
 // ─────────────────────────────────────────────
-// Offline banner (reusable widget)
+// Offline banner
 // ─────────────────────────────────────────────
 class _OfflineBanner extends StatelessWidget {
   final String message;
@@ -458,12 +417,10 @@ class _OfflineBanner extends StatelessWidget {
               size: 16, color: Color(0xFFF59E0B)),
           const SizedBox(width: 8),
           Expanded(
-            child: Text(
-              message,
-              style: GoogleFonts.outfit(
-                  fontSize: 13,
-                  color: const Color(0xFF92400E)),
-            ),
+            child: Text(message,
+                style: GoogleFonts.outfit(
+                    fontSize: 13,
+                    color: const Color(0xFF92400E))),
           ),
         ],
       ),
@@ -489,10 +446,8 @@ class _CountBar extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Text(
-          'Showing $total record${total == 1 ? '' : 's'}',
-          style: AppTextStyles.caption(),
-        ),
+        Text('Showing $total record${total == 1 ? '' : 's'}',
+            style: AppTextStyles.caption()),
         const Spacer(),
         if (hasFilters)
           TextButton(
@@ -512,55 +467,47 @@ class _CountBar extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────
-// Column width constants
-// Matches Laravel Blade table columns:
-// Test Date | Lot No | Vehicle | Supplier | In-House Wt | Avg P&F Wt | Pallets | Status | Actions
+// Column widths
+// Date | Doc No | Start | End | Category | Status | Actions
 // ─────────────────────────────────────────────
 const double _tDate     = 110.0;
-const double _tLotNo    = 130.0;
-const double _tVehicle  = 110.0;
-const double _tSupplier = 160.0;
-const double _tInHouse  = 115.0;
-const double _tAvgPF    = 115.0;
-const double _tPallets  = 80.0;
+const double _tBatchNo  = 200.0;
+const double _tStart    = 140.0;
+const double _tEnd      = 140.0;
+const double _tCategory = 130.0;
 const double _tStatus   = 110.0;
-const double _tActions  = 96.0;
+const double _tActions  = 86.0;
 
-// Mobile — fewer columns
+// Mobile
 const double _mDate    = 110.0;
-const double _mLotNo   = 130.0;
+const double _mBatchNo = 140.0;
 const double _mStatus  = 110.0;
-const double _mActions = 96.0;
+const double _mActions = 86.0;
 
 // ─────────────────────────────────────────────
 // Records table
 // ─────────────────────────────────────────────
 class _RecordsTable extends StatelessWidget {
-  final List<AcidTestingSummary> records;
+  final List<BbsuSummary> records;
   final bool isTablet;
-  final String sortBy, sortOrder;
-  final ValueChanged<String> onSort;
   final ValueChanged<String> onEdit;
-  final ValueChanged<AcidTestingSummary> onDelete;
+  final ValueChanged<BbsuSummary> onDelete;
 
   const _RecordsTable({
     required this.records,
     required this.isTablet,
-    required this.sortBy,
-    required this.sortOrder,
-    required this.onSort,
     required this.onEdit,
     required this.onDelete,
   });
 
   double get _tableWidth => isTablet
-      ? _tDate + _tLotNo + _tVehicle + _tSupplier +
-      _tInHouse + _tAvgPF + _tPallets + _tStatus + _tActions
-      : _mDate + _mLotNo + _mStatus + _mActions;
+      ? _tDate + _tBatchNo + _tStart + _tEnd +
+      _tCategory + _tStatus + _tActions
+      : _mDate + _mBatchNo + _mStatus + _mActions;
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(builder: (context, constraints) {
+    return LayoutBuilder(builder: (ctx, constraints) {
       final available   = constraints.maxWidth;
       final needsScroll = _tableWidth > available;
 
@@ -570,9 +517,6 @@ class _RecordsTable extends StatelessWidget {
           _TableHeader(
             isTablet:   isTablet,
             tableWidth: needsScroll ? _tableWidth : available,
-            sortBy:     sortBy,
-            sortOrder:  sortOrder,
-            onSort:     onSort,
           ),
           ...records.asMap().entries.map((e) => _TableRow(
             record:     e.value,
@@ -599,16 +543,9 @@ class _RecordsTable extends StatelessWidget {
 class _TableHeader extends StatelessWidget {
   final bool isTablet;
   final double tableWidth;
-  final String sortBy, sortOrder;
-  final ValueChanged<String> onSort;
 
-  const _TableHeader({
-    required this.isTablet,
-    required this.tableWidth,
-    required this.sortBy,
-    required this.sortOrder,
-    required this.onSort,
-  });
+  const _TableHeader(
+      {required this.isTablet, required this.tableWidth});
 
   @override
   Widget build(BuildContext context) {
@@ -626,23 +563,17 @@ class _TableHeader extends StatelessWidget {
       child: Row(
         children: isTablet
             ? [
-          _hCell('Test Date',    _tDate,
-              key: 'test_date', sortable: true),
-          _hCell('Lot No',       _tLotNo,
-              key: 'lot_number', sortable: true),
-          _hCell('Vehicle',      _tVehicle),
-          _hCell('Supplier',     _tSupplier),
-          _hCell('In-House (KG)', _tInHouse, right: true),
-          _hCell('Avg P&F (KG)', _tAvgPF,   right: true),
-          _hCell('Pallets',      _tPallets,  center: true),
-          _hCell('Status',       _tStatus),
-          _hCell('Actions',      _tActions,  center: true),
+          _hCell('Date',     _tDate),
+          _hCell('Doc No',   _tBatchNo),
+          _hCell('Start',    _tStart),
+          _hCell('End',      _tEnd),
+          _hCell('Category', _tCategory),
+          _hCell('Status',   _tStatus),
+          _hCell('Actions',  _tActions, center: true),
         ]
             : [
-          _hCell('Date',    _mDate,
-              key: 'test_date', sortable: true),
-          _hCell('Lot No',  _mLotNo,
-              key: 'lot_number', sortable: true),
+          _hCell('Date',    _mDate),
+          _hCell('Doc No',  _mBatchNo),
           _hCell('Status',  _mStatus),
           _hCell('Actions', _mActions, center: true),
         ],
@@ -650,49 +581,19 @@ class _TableHeader extends StatelessWidget {
     );
   }
 
-  Widget _hCell(
-      String label,
-      double width, {
-        String key = '',
-        bool sortable = false,
-        bool right = false,
-        bool center = false,
-      }) {
-    return GestureDetector(
-      onTap: sortable ? () => onSort(key) : null,
-      child: SizedBox(
-        width: width,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(
-              horizontal: 14, vertical: 11),
-          child: Row(
-            mainAxisAlignment: center
-                ? MainAxisAlignment.center
-                : right
-                ? MainAxisAlignment.end
-                : MainAxisAlignment.start,
-            children: [
-              Text(
-                label.toUpperCase(),
-                style:
-                AppTextStyles.label(color: AppColors.green),
-              ),
-              if (sortable) ...[
-                const SizedBox(width: 4),
-                Icon(
-                  sortBy == key
-                      ? sortOrder == 'asc'
-                      ? Icons.keyboard_arrow_up
-                      : Icons.keyboard_arrow_down
-                      : Icons.unfold_more,
-                  size: 14,
-                  color: sortBy == key
-                      ? AppColors.green
-                      : AppColors.textMuted,
-                ),
-              ],
-            ],
-          ),
+  Widget _hCell(String label, double width,
+      {bool center = false}) {
+    return SizedBox(
+      width: width,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+            horizontal: 14, vertical: 11),
+        child: Align(
+          alignment:
+          center ? Alignment.center : Alignment.centerLeft,
+          child: Text(label.toUpperCase(),
+              style: AppTextStyles.label(
+                  color: AppColors.green)),
         ),
       ),
     );
@@ -703,11 +604,10 @@ class _TableHeader extends StatelessWidget {
 // Table row
 // ─────────────────────────────────────────────
 class _TableRow extends StatefulWidget {
-  final AcidTestingSummary record;
+  final BbsuSummary record;
   final bool isTablet, isLast;
   final double tableWidth;
-  final VoidCallback onEdit;
-  final VoidCallback onDelete;
+  final VoidCallback onEdit, onDelete;
 
   const _TableRow({
     required this.record,
@@ -727,9 +627,19 @@ class _TableRowState extends State<_TableRow> {
 
   String _fmtDate(String raw) {
     try {
-      return DateFormat('dd/MM/yyyy').format(DateTime.parse(raw));
+      return DateFormat('dd/MM/yyyy')
+          .format(DateTime.parse(raw));
     } catch (_) {
       return raw.length >= 10 ? raw.substring(0, 10) : raw;
+    }
+  }
+
+  String _fmtDateTime(String raw) {
+    try {
+      final d = DateTime.parse(raw).toLocal();
+      return DateFormat('dd/MM/yy HH:mm').format(d);
+    } catch (_) {
+      return raw.length >= 16 ? raw.substring(0, 16) : raw;
     }
   }
 
@@ -741,7 +651,7 @@ class _TableRowState extends State<_TableRow> {
       decoration: BoxDecoration(
         color: isSubmitted
             ? const Color(0xFFDCFCE7)
-            : const Color(0xFFE0E7FF),
+            : const Color(0xFFFEF3C7),
         borderRadius: BorderRadius.circular(20),
       ),
       child: Text(
@@ -751,31 +661,7 @@ class _TableRowState extends State<_TableRow> {
           fontWeight: FontWeight.w600,
           color: isSubmitted
               ? const Color(0xFF16A34A)
-              : const Color(0xFF3730A3),
-        ),
-      ),
-    );
-  }
-
-  Widget _palletBadge(int count) {
-    if (count == 0) {
-      return Text('—',
-          style: GoogleFonts.outfit(
-              fontSize: 13, color: AppColors.textMuted));
-    }
-    return Container(
-      padding:
-      const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-      decoration: BoxDecoration(
-        color: const Color(0xFFEDE9FE),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Text(
-        '$count pallet${count > 1 ? 's' : ''}',
-        style: GoogleFonts.outfit(
-          fontSize: 11,
-          fontWeight: FontWeight.w700,
-          color: const Color(0xFF5B21B6),
+              : const Color(0xFF92400E),
         ),
       ),
     );
@@ -783,35 +669,23 @@ class _TableRowState extends State<_TableRow> {
 
   @override
   Widget build(BuildContext context) {
-    final r   = widget.record;
-    final fmt = NumberFormat('#,##0.000');
+    final r          = widget.record;
+    final canDelete  = r.statusCode == 0;
 
-    // Delete only allowed when draft
-    final canDelete = r.statusCode == 0;
-
-    Widget cell(
-        double width,
-        Widget child, {
-          bool right = false,
-          bool center = false,
-        }) {
+    Widget cell(double width, Widget child,
+        {bool center = false}) {
       return SizedBox(
         width: width,
         child: Padding(
           padding: const EdgeInsets.symmetric(
               horizontal: 14, vertical: 12),
-          child: center
-              ? Center(child: child)
-              : right
-              ? Align(
-              alignment: Alignment.centerRight,
-              child: child)
-              : child,
+          child: center ? Center(child: child) : child,
         ),
       );
     }
 
-    Widget txt(String text, {bool bold = false, bool muted = false}) =>
+    Widget txt(String text,
+        {bool bold = false, bool muted = false}) =>
         Text(
           text,
           overflow: TextOverflow.ellipsis,
@@ -847,21 +721,15 @@ class _TableRowState extends State<_TableRow> {
           children: widget.isTablet
               ? [
             cell(_tDate,
-                txt(_fmtDate(r.testDate), muted: true)),
-            cell(_tLotNo, _lotNoWidget(r)),
-            cell(_tVehicle,
-                txt(r.vehicleNumber)),
-            cell(_tSupplier,
-                txt(r.supplierName)),
-            cell(_tInHouse,
-                txt(fmt.format(r.receivedQty)),
-                right: true),
-            cell(_tAvgPF,
-                txt(fmt.format(r.avgPalletAndForeignWeight)),
-                right: true),
-            cell(_tPallets,
-                _palletBadge(r.palletCount),
-                center: true),
+                txt(_fmtDate(r.docDate), muted: true)),
+            cell(_tBatchNo, _batchNoWidget(r)),
+            cell(_tStart,
+                txt(_fmtDateTime(r.startTime),
+                    muted: true)),
+            cell(_tEnd,
+                txt(_fmtDateTime(r.endTime),
+                    muted: true)),
+            cell(_tCategory, txt(r.category)),
             cell(_tStatus,
                 _statusBadge(r.statusLabel)),
             cell(_tActions,
@@ -870,8 +738,8 @@ class _TableRowState extends State<_TableRow> {
           ]
               : [
             cell(_mDate,
-                txt(_fmtDate(r.testDate), muted: true)),
-            cell(_mLotNo, _lotNoWidget(r)),
+                txt(_fmtDate(r.docDate), muted: true)),
+            cell(_mBatchNo, _batchNoWidget(r)),
             cell(_mStatus,
                 _statusBadge(r.statusLabel)),
             cell(_mActions,
@@ -883,7 +751,7 @@ class _TableRowState extends State<_TableRow> {
     );
   }
 
-  Widget _lotNoWidget(AcidTestingSummary r) {
+  Widget _batchNoWidget(BbsuSummary r) {
     final isPending = r.syncStatus == 'pending';
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -892,25 +760,21 @@ class _TableRowState extends State<_TableRow> {
           Tooltip(
             message: 'Not yet synced to server',
             child: Container(
-              width: 8,
-              height: 8,
+              width: 8, height: 8,
               margin: const EdgeInsets.only(right: 6),
               decoration: const BoxDecoration(
-                color: AppColors.warning,
-                shape: BoxShape.circle,
-              ),
+                  color: AppColors.warning,
+                  shape: BoxShape.circle),
             ),
           ),
         Flexible(
-          child: Text(
-            r.lotNumber,
-            style: GoogleFonts.outfit(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              color: AppColors.textDark,
-            ),
-            overflow: TextOverflow.ellipsis,
-          ),
+          child: Text(r.batchNo,
+              style: GoogleFonts.outfit(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textDark,
+              ),
+              overflow: TextOverflow.ellipsis),
         ),
       ],
     );
@@ -944,7 +808,7 @@ class _TableRowState extends State<_TableRow> {
 }
 
 // ─────────────────────────────────────────────
-// Action button (same as receiving)
+// Action button
 // ─────────────────────────────────────────────
 class _ActionBtn extends StatelessWidget {
   final IconData icon;
@@ -961,27 +825,23 @@ class _ActionBtn extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
-    return Tooltip(
-      message: tooltip,
-      child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          width: 30,
-          height: 30,
-          decoration: BoxDecoration(
+  Widget build(BuildContext context) => Tooltip(
+    message: tooltip,
+    child: GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 30, height: 30,
+        decoration: BoxDecoration(
             color: bg,
-            borderRadius: BorderRadius.circular(7),
-          ),
-          child: Icon(icon, size: 15, color: iconColor),
-        ),
+            borderRadius: BorderRadius.circular(7)),
+        child: Icon(icon, size: 15, color: iconColor),
       ),
-    );
-  }
+    ),
+  );
 }
 
 // ─────────────────────────────────────────────
-// Pagination (identical to receiving)
+// Pagination
 // ─────────────────────────────────────────────
 class _Pagination extends StatelessWidget {
   final int currentPage, totalPages, total, perPage;
@@ -999,7 +859,6 @@ class _Pagination extends StatelessWidget {
   Widget build(BuildContext context) {
     final start = ((currentPage - 1) * perPage) + 1;
     final end   = (currentPage * perPage).clamp(0, total);
-
     return Container(
       padding: const EdgeInsets.symmetric(
           horizontal: 20, vertical: 13),
@@ -1017,33 +876,27 @@ class _Pagination extends StatelessWidget {
           Text('Showing $start–$end of $total',
               style: AppTextStyles.caption()),
           const Spacer(),
-          Row(
-            children: [
-              _PageBtn(
-                icon:    Icons.chevron_left,
+          Row(children: [
+            _PageBtn(
+                icon: Icons.chevron_left,
                 enabled: currentPage > 1,
-                onTap:   () => onPage(currentPage - 1),
-              ),
-              const SizedBox(width: 4),
-              ...List.generate(totalPages.clamp(0, 5), (i) {
-                final p      = i + 1;
-                final active = p == currentPage;
-                return Padding(
-                  padding: const EdgeInsets.only(right: 4),
-                  child: _PageBtn(
-                    label:  '$p',
-                    active: active,
-                    onTap:  () => onPage(p),
-                  ),
-                );
-              }),
-              _PageBtn(
-                icon:    Icons.chevron_right,
+                onTap: () => onPage(currentPage - 1)),
+            const SizedBox(width: 4),
+            ...List.generate(totalPages.clamp(0, 5), (i) {
+              final p = i + 1;
+              return Padding(
+                padding: const EdgeInsets.only(right: 4),
+                child: _PageBtn(
+                    label: '$p',
+                    active: p == currentPage,
+                    onTap: () => onPage(p)),
+              );
+            }),
+            _PageBtn(
+                icon: Icons.chevron_right,
                 enabled: currentPage < totalPages,
-                onTap:   () => onPage(currentPage + 1),
-              ),
-            ],
-          ),
+                onTap: () => onPage(currentPage + 1)),
+          ]),
         ],
       ),
     );
@@ -1056,32 +909,27 @@ class _PageBtn extends StatelessWidget {
   final bool active, enabled;
   final VoidCallback onTap;
 
-  const _PageBtn({
-    this.label,
-    this.icon,
-    this.active  = false,
-    this.enabled = true,
-    required this.onTap,
-  });
+  const _PageBtn(
+      {this.label,
+        this.icon,
+        this.active = false,
+        this.enabled = true,
+        required this.onTap});
 
   @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: enabled ? onTap : null,
-      child: Container(
-        width: 32,
-        height: 32,
-        decoration: BoxDecoration(
-          color: active ? AppColors.green : AppColors.white,
-          borderRadius: BorderRadius.circular(7),
-          border: active
-              ? null
-              : Border.all(color: AppColors.borderLight),
-        ),
-        child: Center(
-          child: label != null
-              ? Text(
-            label!,
+  Widget build(BuildContext context) => GestureDetector(
+    onTap: enabled ? onTap : null,
+    child: Container(
+      width: 32, height: 32,
+      decoration: BoxDecoration(
+        color: active ? AppColors.green : AppColors.white,
+        borderRadius: BorderRadius.circular(7),
+        border:
+        active ? null : Border.all(color: AppColors.borderLight),
+      ),
+      child: Center(
+        child: label != null
+            ? Text(label!,
             style: GoogleFonts.outfit(
               fontSize: 13,
               fontWeight: FontWeight.w600,
@@ -1090,61 +938,53 @@ class _PageBtn extends StatelessWidget {
                   : enabled
                   ? AppColors.textMid
                   : AppColors.textMuted,
-            ),
-          )
-              : Icon(icon,
-              size: 18,
-              color: enabled
-                  ? AppColors.textMid
-                  : AppColors.textMuted),
-        ),
+            ))
+            : Icon(icon,
+            size: 18,
+            color: enabled
+                ? AppColors.textMid
+                : AppColors.textMuted),
       ),
-    );
-  }
+    ),
+  );
 }
 
 // ─────────────────────────────────────────────
-// Empty / error / shimmer
+// Empty / Error / Shimmer
 // ─────────────────────────────────────────────
 class _EmptyState extends StatelessWidget {
   final VoidCallback onCreate;
   const _EmptyState({required this.onCreate});
 
   @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 60),
-      child: Center(
-        child: Column(
-          children: [
-            Container(
-              width: 64,
-              height: 64,
-              decoration: BoxDecoration(
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 60),
+    child: Center(
+      child: Column(
+        children: [
+          Container(
+            width: 64, height: 64,
+            decoration: BoxDecoration(
                 color: AppColors.greenLight,
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: const Icon(Icons.science_outlined,
-                  size: 32, color: AppColors.green),
-            ),
-            const SizedBox(height: 14),
-            Text('No records found',
-                style: AppTextStyles.subheading(
-                    color: AppColors.textMuted)),
-            const SizedBox(height: 4),
-            Text(
-                'Create your first acid test record to get started',
-                style: AppTextStyles.caption()),
-            const SizedBox(height: 20),
-            MesButton(
+                borderRadius: BorderRadius.circular(16)),
+            child: const Icon(Icons.precision_manufacturing_outlined,
+                size: 32, color: AppColors.green),
+          ),
+          const SizedBox(height: 14),
+          Text('No records found',
+              style: AppTextStyles.subheading(
+                  color: AppColors.textMuted)),
+          const SizedBox(height: 4),
+          Text('Create your first BBSU batch to get started',
+              style: AppTextStyles.caption()),
+          const SizedBox(height: 20),
+          MesButton(
               label: '+ Create First Record',
-              onPressed: onCreate,
-            ),
-          ],
-        ),
+              onPressed: onCreate),
+        ],
       ),
-    );
-  }
+    ),
+  );
 }
 
 class _ErrorState extends StatelessWidget {
@@ -1154,32 +994,28 @@ class _ErrorState extends StatelessWidget {
       {required this.message, required this.onRetry});
 
   @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 48),
-      child: Center(
-        child: Column(
-          children: [
-            const Icon(Icons.wifi_off_outlined,
-                size: 40, color: AppColors.textMuted),
-            const SizedBox(height: 12),
-            Text(message, style: AppTextStyles.body()),
-            const SizedBox(height: 14),
-            MesOutlineButton(
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 48),
+    child: Center(
+      child: Column(
+        children: [
+          const Icon(Icons.wifi_off_outlined,
+              size: 40, color: AppColors.textMuted),
+          const SizedBox(height: 12),
+          Text(message, style: AppTextStyles.body()),
+          const SizedBox(height: 14),
+          MesOutlineButton(
               label: 'Retry',
               icon: Icons.refresh,
-              onPressed: onRetry,
-            ),
-          ],
-        ),
+              onPressed: onRetry),
+        ],
       ),
-    );
-  }
+    ),
+  );
 }
 
 class _TableShimmer extends StatefulWidget {
   const _TableShimmer();
-
   @override
   State<_TableShimmer> createState() => _TableShimmerState();
 }
@@ -1193,24 +1029,20 @@ class _TableShimmerState extends State<_TableShimmer>
   void initState() {
     super.initState();
     _ctrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 900),
-    )..repeat(reverse: true);
+        vsync: this,
+        duration: const Duration(milliseconds: 900))
+      ..repeat(reverse: true);
     _anim = Tween<double>(begin: 0.4, end: 0.85).animate(_ctrl);
   }
 
   @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
-  }
+  void dispose() { _ctrl.dispose(); super.dispose(); }
 
   @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _anim,
-      builder: (_, __) => Column(
-        children: List.generate(
+  Widget build(BuildContext context) => AnimatedBuilder(
+    animation: _anim,
+    builder: (_, __) => Column(
+      children: List.generate(
           8,
               (i) => Container(
             height: 46,
@@ -1221,9 +1053,7 @@ class _TableShimmerState extends State<_TableShimmer>
                   .withOpacity(_anim.value),
               borderRadius: BorderRadius.circular(8),
             ),
-          ),
-        ),
-      ),
-    );
-  }
+          )),
+    ),
+  );
 }

@@ -50,7 +50,7 @@ class _ReceivingFormScreenState extends State<ReceivingFormScreen> {
   bool _isLoading    = true;
   bool _isSaving     = false;
   bool _isSubmitting = false; // ✅ separate loading state for submit
-
+  bool _isSubmitted  = false;
   Map<String, String> _fieldErrors = {};
   String? _currentId;
 
@@ -105,6 +105,7 @@ class _ReceivingFormScreenState extends State<ReceivingFormScreen> {
     _selectedUnit         = record.unit ?? 'KG';
     _vehicleCtrl.text     = record.vehicleNo ?? '';
     _remarksCtrl.text     = record.remarks ?? '';
+    _isSubmitted          = record.status != "0";
   }
 
   Future<void> _pickDate() async {
@@ -305,12 +306,16 @@ class _ReceivingFormScreenState extends State<ReceivingFormScreen> {
 
                 // ── Page header ──────────────────────────────
                 MesPageHeader(
-                  title: widget.isCreate
+                  title: _isSubmitted
+                      ? 'Receiving Record'  // ✅ Changed for submitted records
+                      : (widget.isCreate
                       ? 'Create Receiving Record'
-                      : 'Edit Receiving Record',
-                  subtitle: widget.isCreate
+                      : 'Edit Receiving Record'),
+                  subtitle: _isSubmitted
+                      ? 'This record has been submitted and cannot be edited'  // ✅ New subtitle
+                      : (widget.isCreate
                       ? 'Fill in the details'
-                      : 'Lot: ${_lotCtrl.text}',
+                      : 'Lot: ${_lotCtrl.text}'),
                   actions: [
                     MesOutlineButton(
                       label: 'Back',
@@ -487,7 +492,9 @@ class _ReceivingFormScreenState extends State<ReceivingFormScreen> {
                 // ── Action buttons ───────────────────────────
                 // Edit mode: Save + Submit side by side
                 // Create mode: Save only
-                if (!widget.isCreate)
+                if (_isSubmitted)
+                  const SizedBox.shrink()  // Hide all buttons when submitted
+                else if (!widget.isCreate)
                   Row(
                     children: [
                       // Save button

@@ -3,6 +3,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';     // ✅ add
 
 import 'package:dubatt_app/services/connectivity_service.dart';
 import 'package:dubatt_app/services/local_db_service.dart';
+import 'services/app_sync_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'theme/app_theme.dart';
@@ -16,10 +17,10 @@ import 'screens/receiving/receiving_form_screen.dart';
 // ── Uncomment each import as you create the screen files
 import 'screens/acid_testing/acid_testing_list_screen.dart';
 import 'screens/acid_testing/acid_testing_form_screen.dart';
-// import 'screens/bbsu/bbsu_list_screen.dart';
-// import 'screens/bbsu/bbsu_form_screen.dart';
-// import 'screens/smelting/smelting_list_screen.dart';
-// import 'screens/smelting/smelting_form_screen.dart';
+import 'screens/bbsu/bbsu_list_screen.dart';
+import 'screens/bbsu/bbsu_form_screen.dart';
+import 'screens/smelting/smelting_list_screen.dart';
+import 'screens/smelting/smelting_form_screen.dart';
 // import 'screens/refining/refining_list_screen.dart';
 // import 'screens/refining/refining_form_screen.dart';
 
@@ -41,6 +42,7 @@ void main() async {
   await AuthService().init();
   await LocalDbService().init();
   await ConnectivityService().init();
+  AppSyncManager().init();
 
   runApp(const MesApp());
 }
@@ -99,21 +101,21 @@ class MesApp extends StatelessWidget {
     }
 
     // ── BBSU ───────────────────────────────────────────────────
-    // if (name == '/bbsu') {
-    //   return _slide(BbsuListScreen(onLogout: root._onLogout));
-    // }
-    // if (name == '/bbsu/create') {
-    //   return _slide(BbsuFormScreen(onLogout: root._onLogout));
-    // }
-    // if (name.startsWith('/bbsu/') && name.endsWith('/edit')) {
-    //   final id = name
-    //       .replaceFirst('/bbsu/', '')
-    //       .replaceFirst('/edit', '');
-    //   return _slide(BbsuFormScreen(
-    //       recordId: id, onLogout: root._onLogout));
-    // }
+    if (name == '/bbsu') {
+      return _slide(BbsuListScreen(onLogout: root._onLogout));
+    }
+    if (name == '/bbsu/create') {
+      return _slide(BbsuFormScreen(onLogout: root._onLogout));
+    }
+    if (name.startsWith('/bbsu/') && name.endsWith('/edit')) {
+      final id = name
+          .replaceFirst('/bbsu/', '')
+          .replaceFirst('/edit', '');
+      return _slide(BbsuFormScreen(
+          recordId: id, onLogout: root._onLogout));
+    }
 
-    // ── Smelting ───────────────────────────────────────────────
+    // // ── Smelting ───────────────────────────────────────────────
     // if (name == '/smelting') {
     //   return _slide(SmeltingListScreen(onLogout: root._onLogout));
     // }

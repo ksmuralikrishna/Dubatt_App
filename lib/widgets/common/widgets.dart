@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../theme/app_theme.dart';
+import 'package:flutter/services.dart';
 
 
 // ─────────────────────────────────────────────
@@ -79,6 +80,9 @@ class MesTextField extends StatelessWidget {
   final String? errorText;
   final bool obscureText;
   final Widget? suffixIcon;
+  final String? badge;
+  final Color? badgeColor;
+  final List<TextInputFormatter>? inputFormatters;
 
   const MesTextField({
     super.key,
@@ -93,6 +97,9 @@ class MesTextField extends StatelessWidget {
     this.errorText,
     this.obscureText = false,
     this.suffixIcon,
+    this.badge,
+    this.badgeColor,
+    this.inputFormatters,
   });
 
   @override
