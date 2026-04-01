@@ -1,6 +1,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// smelting_list_screen.dart
-// Columns: Batch No | Date | Rotary | Start | End | Output Material | Qty | Status | Actions
+// refining_list_screen.dart
+// Columns: Batch No | Pot No | Material | Date |
+//          LPG Consump. | Elec. Consump. | Status | Actions
 // ─────────────────────────────────────────────────────────────────────────────
 
 import 'dart:async';
@@ -10,25 +11,25 @@ import 'package:intl/intl.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/common/widgets.dart';
 import '../../widgets/common/app_shell.dart';
-import '../../models/smelting_model.dart';
-import '../../services/smelting_service.dart';
+import '../../models/refining_model.dart';
+import '../../services/refining_service.dart';
 import '../../services/connectivity_service.dart';
-import 'smelting_form_screen.dart';
+import 'refining_form_screen.dart';
 
-class SmeltingListScreen extends StatefulWidget {
+class RefiningListScreen extends StatefulWidget {
   final VoidCallback onLogout;
-  const SmeltingListScreen({super.key, required this.onLogout});
+  const RefiningListScreen({super.key, required this.onLogout});
 
   @override
-  State<SmeltingListScreen> createState() => _SmeltingListScreenState();
+  State<RefiningListScreen> createState() => _RefiningListScreenState();
 }
 
-class _SmeltingListScreenState extends State<SmeltingListScreen> {
+class _RefiningListScreenState extends State<RefiningListScreen> {
   final _searchCtrl = TextEditingController();
   Timer? _debounce;
   StreamSubscription<bool>? _connectivitySub;
 
-  List<SmeltingSummary> _records = [];
+  List<RefiningSummary> _records = [];
   bool _isLoading = true;
   String? _errorMsg;
   int _total       = 0;
@@ -36,7 +37,6 @@ class _SmeltingListScreenState extends State<SmeltingListScreen> {
   static const _perPage = 20;
 
   String _statusFilter = 'all';
-  String _rotaryFilter = '';
 
   @override
   void initState() {
@@ -60,12 +60,11 @@ class _SmeltingListScreenState extends State<SmeltingListScreen> {
     if (reset) _currentPage = 1;
     setState(() { _isLoading = true; _errorMsg = null; });
 
-    final result = await SmeltingService().getList(
-      page:     _currentPage,
-      perPage:  _perPage,
-      search:   _searchCtrl.text.trim(),
-      status:   _statusFilter,
-      rotaryNo: _rotaryFilter,
+    final result = await RefiningService().getList(
+      page:    _currentPage,
+      perPage: _perPage,
+      search:  _searchCtrl.text.trim(),
+      status:  _statusFilter,
     );
 
     if (!mounted) return;
@@ -89,20 +88,18 @@ class _SmeltingListScreenState extends State<SmeltingListScreen> {
   void _openForm({String? id}) async {
     await Navigator.of(context).push(MaterialPageRoute(
       builder: (_) =>
-          SmeltingFormScreen(recordId: id, onLogout: widget.onLogout),
+          RefiningFormScreen(recordId: id, onLogout: widget.onLogout),
     ));
     _load(reset: true);
   }
 
-  Future<void> _confirmDelete(SmeltingSummary record) async {
+  Future<void> _confirmDelete(RefiningSummary record) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
         title: Text('Delete batch?',
-            style: GoogleFonts.outfit(
-                fontSize: 16, fontWeight: FontWeight.w600,
+            style: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.w600,
                 color: AppColors.textDark)),
         content: Text('Batch "${record.batchNo}" will be permanently deleted.',
             style: GoogleFonts.outfit(fontSize: 14, color: AppColors.textMid)),
@@ -129,7 +126,7 @@ class _SmeltingListScreenState extends State<SmeltingListScreen> {
     );
     if (confirmed != true) return;
 
-    final error = await SmeltingService().delete(record.id);
+    final error = await RefiningService().delete(record.id);
     if (!mounted) return;
     if (error == null) {
       _showSnack('Batch deleted.');
@@ -164,7 +161,7 @@ class _SmeltingListScreenState extends State<SmeltingListScreen> {
     final isTablet = Responsive.isTablet(context);
 
     return AppShell(
-      currentRoute: '/smelting',
+      currentRoute: '/refining',
       onLogout: widget.onLogout,
       child: Column(
         children: [
@@ -191,8 +188,8 @@ class _SmeltingListScreenState extends State<SmeltingListScreen> {
                     ),
 
                     MesPageHeader(
-                      title: 'Smelting Batches',
-                      subtitle: 'Manage rotary furnace smelting batch records',
+                      title: 'Refining Batches',
+                      subtitle: 'Refining log sheet — finished goods & dross tracking',
                       actions: [
                         MesButton(
                           label: 'Create New',
@@ -218,16 +215,11 @@ class _SmeltingListScreenState extends State<SmeltingListScreen> {
                       Text('Showing $_total record${_total == 1 ? '' : 's'}',
                           style: AppTextStyles.caption()),
                       const Spacer(),
-                      if (_searchCtrl.text.isNotEmpty ||
-                          _statusFilter != 'all' ||
-                          _rotaryFilter.isNotEmpty)
+                      if (_searchCtrl.text.isNotEmpty || _statusFilter != 'all')
                         TextButton(
                           onPressed: () {
                             _searchCtrl.clear();
-                            setState(() {
-                              _statusFilter = 'all';
-                              _rotaryFilter = '';
-                            });
+                            setState(() => _statusFilter = 'all');
                             _load(reset: true);
                           },
                           style: TextButton.styleFrom(
@@ -285,11 +277,9 @@ class _SmeltingListScreenState extends State<SmeltingListScreen> {
     fillColor: AppColors.greenXLight,
     contentPadding:
     const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
-    border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(9),
+    border: OutlineInputBorder(borderRadius: BorderRadius.circular(9),
         borderSide: const BorderSide(color: AppColors.border, width: 1.5)),
-    enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(9),
+    enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(9),
         borderSide: const BorderSide(color: AppColors.border, width: 1.5)),
   );
 
@@ -300,11 +290,10 @@ class _SmeltingListScreenState extends State<SmeltingListScreen> {
         onChanged: _onSearchChanged,
         style: GoogleFonts.outfit(fontSize: 13.5, color: AppColors.textDark),
         decoration: InputDecoration(
-          hintText: 'Search by batch no…',
+          hintText: 'Search batch no…',
           hintStyle: GoogleFonts.outfit(fontSize: 13.5, color: AppColors.textMuted),
           prefixIcon: const Icon(Icons.search, size: 18, color: AppColors.textMuted),
-          filled: true,
-          fillColor: AppColors.greenXLight,
+          filled: true, fillColor: AppColors.greenXLight,
           contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(9),
               borderSide: const BorderSide(color: AppColors.border, width: 1.5)),
@@ -323,9 +312,9 @@ class _SmeltingListScreenState extends State<SmeltingListScreen> {
         style: GoogleFonts.outfit(fontSize: 13, color: AppColors.textDark),
         decoration: _filterDec(),
         items: const [
-          DropdownMenuItem(value: 'all',   child: Text('All Status')),
-          DropdownMenuItem(value: '0',     child: Text('Draft')),
-          DropdownMenuItem(value: '1',     child: Text('Submitted')),
+          DropdownMenuItem(value: 'all', child: Text('All Status')),
+          DropdownMenuItem(value: '0',   child: Text('Draft')),
+          DropdownMenuItem(value: '1',   child: Text('Submitted')),
         ],
         onChanged: (v) {
           setState(() => _statusFilter = v ?? 'all');
@@ -334,40 +323,10 @@ class _SmeltingListScreenState extends State<SmeltingListScreen> {
       ),
     );
 
-    final rotaryDrop = SizedBox(
-      width: tablet ? 140 : double.infinity,
-      child: DropdownButtonFormField<String>(
-        value: _rotaryFilter,
-        style: GoogleFonts.outfit(fontSize: 13, color: AppColors.textDark),
-        decoration: _filterDec(),
-        items: const [
-          DropdownMenuItem(value: '',  child: Text('All Rotary')),
-          DropdownMenuItem(value: '1', child: Text('Rotary 1')),
-          DropdownMenuItem(value: '2', child: Text('Rotary 2')),
-        ],
-        onChanged: (v) {
-          setState(() => _rotaryFilter = v ?? '');
-          _load(reset: true);
-        },
-      ),
-    );
-
     if (tablet) {
-      return [
-        search,
-        const SizedBox(width: 12),
-        statusDrop,
-        const SizedBox(width: 12),
-        rotaryDrop,
-      ];
+      return [search, const SizedBox(width: 12), statusDrop];
     }
-    return [
-      search,
-      const SizedBox(height: 10),
-      statusDrop,
-      const SizedBox(height: 10),
-      rotaryDrop,
-    ];
+    return [search, const SizedBox(height: 10), statusDrop];
   }
 }
 
@@ -399,30 +358,30 @@ class _OfflineBanner extends StatelessWidget {
 
 // ─────────────────────────────────────────────
 // Column widths
+// Batch No | Pot No | Material | Date | LPG | Elec | Status | Actions
 // ─────────────────────────────────────────────
-const double _tBatchNo  = 180.0;
-const double _tDate     = 120.0;
-const double _tRotary   = 90.0;
-const double _tStart    = 80.0;
-const double _tEnd      = 80.0;
-const double _tOutMat   = 150.0;
-const double _tOutQty   = 100.0;
-const double _tStatus   = 100.0;
-const double _tActions  = 110.0;
+const double _tBatch   = 130.0;
+const double _tPot     = 100.0;
+const double _tMat     = 140.0;
+const double _tDate    = 100.0;
+const double _tLpg     = 110.0;
+const double _tElec    = 120.0;
+const double _tStatus  = 100.0;
+const double _tActions = 86.0;
 
-const double _mBatchNo  = 130.0;
-const double _mDate     = 100.0;
-const double _mStatus   = 100.0;
-const double _mActions  = 110.0;
+const double _mBatch   = 130.0;
+const double _mDate    = 100.0;
+const double _mStatus  = 100.0;
+const double _mActions = 86.0;
 
 // ─────────────────────────────────────────────
 // Table
 // ─────────────────────────────────────────────
 class _Table extends StatelessWidget {
-  final List<SmeltingSummary> records;
+  final List<RefiningSummary> records;
   final bool isTablet;
   final ValueChanged<String> onEdit;
-  final ValueChanged<SmeltingSummary> onDelete;
+  final ValueChanged<RefiningSummary> onDelete;
 
   const _Table({
     required this.records, required this.isTablet,
@@ -430,14 +389,13 @@ class _Table extends StatelessWidget {
   });
 
   double get _w => isTablet
-      ? _tBatchNo + _tDate + _tRotary + _tStart + _tEnd +
-      _tOutMat + _tOutQty + _tStatus + _tActions
-      : _mBatchNo + _mDate + _mStatus + _mActions;
+      ? _tBatch + _tPot + _tMat + _tDate + _tLpg + _tElec + _tStatus + _tActions
+      : _mBatch + _mDate + _mStatus + _mActions;
 
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(builder: (ctx, box) {
-      final needs = _w > box.maxWidth;
+      final needs   = _w > box.maxWidth;
       Widget content = Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -475,18 +433,17 @@ class _Header extends StatelessWidget {
     ),
     child: Row(children: isTablet
         ? [
-      _h('Batch No',   _tBatchNo),
+      _h('Batch No',   _tBatch),
+      _h('Pot No',     _tPot),
+      _h('Material',   _tMat),
       _h('Date',       _tDate),
-      _h('Rotary',     _tRotary,  center: true),
-      _h('Start',      _tStart),
-      _h('End',        _tEnd),
-      _h('Output Mat', _tOutMat),
-      _h('Qty (KG)',   _tOutQty,  right: true),
+      _h('LPG (m³)',   _tLpg,    right: true),
+      _h('Elec (kWh)', _tElec,   right: true),
       _h('Status',     _tStatus),
       _h('Actions',    _tActions, center: true),
     ]
         : [
-      _h('Batch No', _mBatchNo),
+      _h('Batch No', _mBatch),
       _h('Date',     _mDate),
       _h('Status',   _mStatus),
       _h('Actions',  _mActions, center: true),
@@ -513,7 +470,7 @@ class _Header extends StatelessWidget {
 }
 
 class _Row extends StatefulWidget {
-  final SmeltingSummary record;
+  final RefiningSummary record;
   final bool isTablet, isLast;
   final double tableWidth;
   final VoidCallback onEdit, onDelete;
@@ -535,8 +492,6 @@ class _RowState extends State<_Row> {
     catch (_) { return raw.length >= 10 ? raw.substring(0, 10) : raw; }
   }
 
-  String _fmtTime(String? raw) => SmeltingService.toHHmm(raw) ?? '—';
-
   Widget _statusBadge(String label) {
     final sub = label.toLowerCase() == 'submitted';
     return Container(
@@ -551,25 +506,11 @@ class _RowState extends State<_Row> {
     );
   }
 
-  Widget _rotaryBadge(String no) {
-    final one = no == '1';
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-      decoration: BoxDecoration(
-        color: one ? const Color(0xFFFEF3C7) : const Color(0xFFEDE9FE),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Text('Rotary $no',
-          style: GoogleFonts.outfit(fontSize: 11, fontWeight: FontWeight.w700,
-              color: one ? const Color(0xFF92400E) : const Color(0xFF5B21B6))),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
-    final r          = widget.record;
-    final fmt        = NumberFormat('#,##0.000');
-    final canDelete  = r.statusCode == 0;
+    final r         = widget.record;
+    final fmt       = NumberFormat('#,##0.000');
+    final canDelete = r.statusCode == 0;
 
     Widget cell(double w, Widget child,
         {bool right = false, bool center = false}) =>
@@ -607,28 +548,32 @@ class _RowState extends State<_Row> {
         ),
         child: Row(children: widget.isTablet
             ? [
-          cell(_tBatchNo, _batchWidget(r)),
-          cell(_tDate,    txt(_fmtDate(r.date), muted: true)),
-          cell(_tRotary,  _rotaryBadge(r.rotaryNo), center: true),
-          cell(_tStart,   txt(_fmtTime(r.startTime), muted: true)),
-          cell(_tEnd,     txt(_fmtTime(r.endTime), muted: true)),
-          cell(_tOutMat,  txt(r.outputMaterialName ?? '—')),
-          cell(_tOutQty,  txt(r.outputQty != null ? fmt.format(r.outputQty) : '—'),
+          cell(_tBatch,  _batchWidget(r)),
+          cell(_tPot,    txt(r.potNo ?? '—', muted: true)),
+          cell(_tMat,    txt(r.materialName ?? '—')),
+          cell(_tDate,   txt(_fmtDate(r.date), muted: true)),
+          cell(_tLpg,
+              txt(r.lpgConsumption != null
+                  ? fmt.format(r.lpgConsumption) : '—'),
+              right: true),
+          cell(_tElec,
+              txt(r.electricityConsumption != null
+                  ? fmt.format(r.electricityConsumption) : '—'),
               right: true),
           cell(_tStatus,  _statusBadge(r.statusLabel)),
           cell(_tActions, _actions(canDelete), center: true),
         ]
             : [
-          cell(_mBatchNo, _batchWidget(r)),
-          cell(_mDate,    txt(_fmtDate(r.date), muted: true)),
-          cell(_mStatus,  _statusBadge(r.statusLabel)),
+          cell(_mBatch,  _batchWidget(r)),
+          cell(_mDate,   txt(_fmtDate(r.date), muted: true)),
+          cell(_mStatus, _statusBadge(r.statusLabel)),
           cell(_mActions, _actions(canDelete), center: true),
         ]),
       ),
     );
   }
 
-  Widget _batchWidget(SmeltingSummary r) => Row(
+  Widget _batchWidget(RefiningSummary r) => Row(
     mainAxisSize: MainAxisSize.min,
     children: [
       if (r.syncStatus == 'pending')
@@ -749,9 +694,9 @@ class _PBtn extends StatelessWidget {
       ),
       child: Center(
         child: label != null
-            ? Text(label!,
-            style: GoogleFonts.outfit(fontSize: 13, fontWeight: FontWeight.w600,
-                color: active ? Colors.white : enabled ? AppColors.textMid : AppColors.textMuted))
+            ? Text(label!, style: GoogleFonts.outfit(fontSize: 13,
+            fontWeight: FontWeight.w600,
+            color: active ? Colors.white : enabled ? AppColors.textMid : AppColors.textMuted))
             : Icon(icon, size: 18,
             color: enabled ? AppColors.textMid : AppColors.textMuted),
       ),
@@ -770,18 +715,15 @@ class _EmptyState extends StatelessWidget {
   Widget build(BuildContext context) => Padding(
     padding: const EdgeInsets.symmetric(vertical: 60),
     child: Center(child: Column(children: [
-      Container(
-        width: 64, height: 64,
-        decoration: BoxDecoration(color: AppColors.greenLight,
-            borderRadius: BorderRadius.circular(16)),
-        child: const Icon(Icons.local_fire_department_outlined,
-            size: 32, color: AppColors.green),
-      ),
+      Container(width: 64, height: 64,
+          decoration: BoxDecoration(color: AppColors.greenLight,
+              borderRadius: BorderRadius.circular(16)),
+          child: const Icon(Icons.factory_outlined, size: 32, color: AppColors.green)),
       const SizedBox(height: 14),
       Text('No batches found',
           style: AppTextStyles.subheading(color: AppColors.textMuted)),
       const SizedBox(height: 4),
-      Text('Create your first smelting batch to get started',
+      Text('Create your first refining batch to get started',
           style: AppTextStyles.caption()),
       const SizedBox(height: 20),
       MesButton(label: '+ Create First Batch', onPressed: onCreate),

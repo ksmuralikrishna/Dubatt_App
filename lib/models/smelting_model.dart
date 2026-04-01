@@ -320,6 +320,7 @@ class SmeltingRecord {
   final String batchNo;
   final String date;
   final String rotaryNo;
+  final String? chargeNo;
   final String? startTime;
   final String? endTime;
   final double? lpgConsumption;
@@ -344,6 +345,7 @@ class SmeltingRecord {
     required this.batchNo,
     required this.date,
     required this.rotaryNo,
+    this.chargeNo,
     this.startTime,
     this.endTime,
     this.lpgConsumption,
@@ -374,6 +376,7 @@ class SmeltingRecord {
       batchNo:                json['batch_no']?.toString() ?? '',
       date:                   json['date']?.toString() ?? '',
       rotaryNo:               json['rotary_no']?.toString() ?? '',
+      chargeNo:               json['charge_no']?.toString() ?? '',
       startTime:              json['start_time']?.toString(),
       endTime:                json['end_time']?.toString(),
       lpgConsumption:         _toDouble(json['lpg_consumption']),
@@ -403,6 +406,7 @@ class SmeltingRecord {
     'batch_no':                batchNo,
     'date':                    date,
     'rotary_no':               rotaryNo,
+    'charge_no':                chargeNo,
     'start_time':              startTime,
     'end_time':                endTime,
     'lpg_consumption':         lpgConsumption,
@@ -437,6 +441,7 @@ class SmeltingSummary {
   final String batchNo;
   final String date;
   final String rotaryNo;
+  final String? chargeNo;
   final String? startTime;
   final String? endTime;
   final String? outputMaterialName;
@@ -450,6 +455,7 @@ class SmeltingSummary {
     required this.batchNo,
     required this.date,
     required this.rotaryNo,
+    this.chargeNo,
     this.startTime,
     this.endTime,
     this.outputMaterialName,
@@ -467,6 +473,7 @@ class SmeltingSummary {
       batchNo:            json['batch_no']?.toString() ?? '',
       date:               json['date']?.toString() ?? '',
       rotaryNo:           json['rotary_no']?.toString() ?? '',
+      chargeNo:           json['charge_no']?.toString() ?? '',
       startTime:          json['start_time']?.toString(),
       endTime:            json['end_time']?.toString(),
       outputMaterialName: json['output_material_name']?.toString(),
@@ -484,6 +491,7 @@ class SmeltingSummary {
       batchNo:     row['batch_no']?.toString() ?? '',
       date:        row['doc_date']?.toString() ?? '',
       rotaryNo:    row['rotary_no']?.toString() ?? '',
+      chargeNo:    row['charge_no']?.toString() ?? '',
       startTime:   row['start_time']?.toString(),
       endTime:     row['end_time']?.toString(),
       outputQty:   _toDouble(row['output_qty']),

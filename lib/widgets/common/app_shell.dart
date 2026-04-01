@@ -288,7 +288,7 @@ class _Sidebar extends StatelessWidget {
                       mainAxisAlignment: MainAxisAlignment.center,
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('MES Portal',
+                        Text('Dubatt Nexus',
                             style: GoogleFonts.outfit(
                               color: Colors.white,
                               fontSize: 13,

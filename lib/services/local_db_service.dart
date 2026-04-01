@@ -5,6 +5,9 @@ import 'package:dubatt_app/models/receiving_model.dart';
 import 'package:dubatt_app/models/sync_queue_model.dart';
 import 'package:dubatt_app/models/acid_testing_model.dart';
 import 'package:dubatt_app/models/bbsu_model.dart';
+import 'package:dubatt_app/models/smelting_model.dart';
+import 'package:dubatt_app/models/refining_model.dart'; // ✅ ADD THIS IMPORT
+
 class LocalDbService {
   static final LocalDbService _i = LocalDbService._();
   factory LocalDbService() => _i;
@@ -14,12 +17,11 @@ class LocalDbService {
 
   Future<void> init() async {
     _db = await openDatabase(
-      join(await getDatabasesPath(), 'mes_offline.db'),
-      version: 4,
-      onCreate: (db, version) async {
-
-        // ── Sync queue — pending API operations
-        await db.execute('''
+        join(await getDatabasesPath(), 'mes_offline.db'),
+        version: 5,
+        onCreate: (db, version) async {
+          // ── Sync queue — pending API operations
+          await db.execute('''
           CREATE TABLE sync_queue (
             id           INTEGER PRIMARY KEY AUTOINCREMENT,
             operation    TEXT NOT NULL,
@@ -32,10 +34,8 @@ class LocalDbService {
           )
         ''');
 
-        // ── Receiving records
-        // ONLY used for caching server records (sync_status = 'synced').
-        // Offline-created records live in sync_queue only.
-        await db.execute('''
+          // ── Receiving records
+          await db.execute('''
           CREATE TABLE receiving_records (
             local_id       INTEGER PRIMARY KEY AUTOINCREMENT,
             server_id      TEXT,
@@ -58,17 +58,14 @@ class LocalDbService {
           )
         ''');
 
-        // Unique index on server_id (only for non-null values)
-        // Allows multiple offline rows (server_id IS NULL) while
-        // preventing duplicate cached server records
-        await db.execute('''
+          await db.execute('''
           CREATE UNIQUE INDEX IF NOT EXISTS idx_receiving_server_id
           ON receiving_records (server_id)
           WHERE server_id IS NOT NULL
         ''');
 
-        // ── Dropdown cache
-        await db.execute('''
+          // ── Dropdown cache
+          await db.execute('''
           CREATE TABLE dropdown_cache (
             id        INTEGER PRIMARY KEY AUTOINCREMENT,
             type      TEXT NOT NULL,
@@ -79,9 +76,8 @@ class LocalDbService {
           )
         ''');
 
-        // ── 1. Add to onCreate in init() ─────────────────────────────────────────────
-
-        await db.execute('''
+          // ── Acid testing records
+          await db.execute('''
           CREATE TABLE acid_testing_records (
             local_id       INTEGER PRIMARY KEY AUTOINCREMENT,
             server_id      TEXT,
@@ -101,13 +97,13 @@ class LocalDbService {
           )
         ''');
 
-        await db.execute('''
+          await db.execute('''
           CREATE UNIQUE INDEX IF NOT EXISTS idx_acid_testing_server_id
           ON acid_testing_records (server_id)
           WHERE server_id IS NOT NULL
         ''');
 
-        await db.execute('''
+          await db.execute('''
           CREATE TABLE acid_lot_cache (
             id         INTEGER PRIMARY KEY AUTOINCREMENT,
             lot_no     TEXT NOT NULL,
@@ -121,65 +117,9 @@ class LocalDbService {
           )
         ''');
 
-
-  await db.execute('''
-    CREATE TABLE bbsu_records (
-      local_id       INTEGER PRIMARY KEY AUTOINCREMENT,
-      server_id      TEXT,
-      batch_no       TEXT,
-      doc_date       TEXT,
-      category       TEXT,
-      start_time     TEXT,
-      end_time       TEXT,
-      status_label   TEXT DEFAULT 'Draft',
-      status_code    INTEGER DEFAULT 0,
-      sync_status    TEXT DEFAULT 'synced',
-      updated_at     TEXT,
-      created_at     TEXT
-    )
-  ''');
-
-  await db.execute('''
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_bbsu_server_id
-    ON bbsu_records (server_id)
-    WHERE server_id IS NOT NULL
-  ''');
-
-  await db.execute('''
-    CREATE TABLE bbsu_lot_cache (
-      id            INTEGER PRIMARY KEY AUTOINCREMENT,
-      lot_number    TEXT NOT NULL,
-      supplier_name TEXT,
-      received_qty  REAL,
-      acid_pct      REAL,
-      cached_at     TEXT NOT NULL
-    )
-  ''');
-        await db.execute('''
-    CREATE TABLE bbsu_acid_summary_cache (
-      id                   INTEGER PRIMARY KEY AUTOINCREMENT,
-      lot_number           TEXT NOT NULL,
-      lot_no               TEXT,
-      material_description TEXT,
-      avg_acid_pct         REAL,
-      net_weight           REAL,
-      unit                 TEXT,
-      cached_at            TEXT NOT NULL
-    )
-  ''');
-
-        await db.execute('''
-    CREATE INDEX IF NOT EXISTS idx_acid_summary_lot
-    ON bbsu_acid_summary_cache (lot_number)
-  ''');
-
-
-
-      },
-      onUpgrade: (db, oldVersion, newVersion) async {
-        if (oldVersion < 4) {
+          // ── BBSU records
           await db.execute('''
-          CREATE TABLE IF NOT EXISTS bbsu_records (
+          CREATE TABLE bbsu_records (
             local_id       INTEGER PRIMARY KEY AUTOINCREMENT,
             server_id      TEXT,
             batch_no       TEXT,
@@ -194,13 +134,15 @@ class LocalDbService {
             created_at     TEXT
           )
         ''');
+
           await db.execute('''
           CREATE UNIQUE INDEX IF NOT EXISTS idx_bbsu_server_id
           ON bbsu_records (server_id)
           WHERE server_id IS NOT NULL
         ''');
+
           await db.execute('''
-          CREATE TABLE IF NOT EXISTS bbsu_lot_cache (
+          CREATE TABLE bbsu_lot_cache (
             id            INTEGER PRIMARY KEY AUTOINCREMENT,
             lot_number    TEXT NOT NULL,
             supplier_name TEXT,
@@ -209,24 +151,158 @@ class LocalDbService {
             cached_at     TEXT NOT NULL
           )
         ''');
+
           await db.execute('''
-      CREATE TABLE IF NOT EXISTS bbsu_acid_summary_cache (
-        id                   INTEGER PRIMARY KEY AUTOINCREMENT,
-        lot_number           TEXT NOT NULL,
-        lot_no               TEXT,
-        material_description TEXT,
-        avg_acid_pct         REAL,
-        net_weight           REAL,
-        unit                 TEXT,
-        cached_at            TEXT NOT NULL
-      )
-    ''');
+          CREATE TABLE bbsu_acid_summary_cache (
+            id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+            lot_number           TEXT NOT NULL,
+            lot_no               TEXT,
+            material_description TEXT,
+            avg_acid_pct         REAL,
+            net_weight           REAL,
+            unit                 TEXT,
+            cached_at            TEXT NOT NULL
+          )
+        ''');
+
           await db.execute('''
-      CREATE INDEX IF NOT EXISTS idx_acid_summary_lot
-      ON bbsu_acid_summary_cache (lot_number)
-    ''');
+          CREATE INDEX IF NOT EXISTS idx_acid_summary_lot
+          ON bbsu_acid_summary_cache (lot_number)
+        ''');
+
+          // ── Smelting tables (NEW)
+          await db.execute('''
+          CREATE TABLE smelting_records (
+            local_id     INTEGER PRIMARY KEY AUTOINCREMENT,
+            server_id    TEXT,
+            batch_no     TEXT,
+            doc_date     TEXT,
+            rotary_no    TEXT,
+            start_time   TEXT,
+            end_time     TEXT,
+            output_qty   REAL,
+            status_label TEXT DEFAULT 'Draft',
+            status_code  INTEGER DEFAULT 0,
+            sync_status  TEXT DEFAULT 'synced',
+            updated_at   TEXT,
+            created_at   TEXT
+          )
+        ''');
+
+          await db.execute('''
+          CREATE UNIQUE INDEX IF NOT EXISTS idx_smelting_server_id
+          ON smelting_records (server_id)
+          WHERE server_id IS NOT NULL
+        ''');
+
+          await db.execute('''
+          CREATE TABLE smelting_material_cache (
+            id        INTEGER PRIMARY KEY AUTOINCREMENT,
+            item_id   TEXT NOT NULL,
+            name      TEXT NOT NULL,
+            unit      TEXT,
+            cached_at TEXT NOT NULL
+          )
+        ''');
+
+          await db.execute('''
+          CREATE TABLE smelting_bbsu_lot_cache (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            material_id   TEXT NOT NULL,
+            bbsu_batch_id TEXT NOT NULL,
+            batch_no      TEXT,
+            material_name TEXT,
+            material_unit TEXT,
+            available_qty REAL,
+            cached_at     TEXT NOT NULL
+          )
+        ''');
+
+          await db.execute('''
+          CREATE INDEX IF NOT EXISTS idx_smelting_bbsu_lot_mat
+          ON smelting_bbsu_lot_cache (material_id)
+        ''');
+// Refining
+          await db.execute('''
+    CREATE TABLE refining_records (
+      local_id               INTEGER PRIMARY KEY AUTOINCREMENT,
+      server_id              TEXT,
+      batch_no               TEXT,
+      pot_no                 TEXT,
+      doc_date               TEXT,
+      lpg_consumption        REAL,
+      electricity_consumption REAL,
+      status_label           TEXT DEFAULT 'Draft',
+      status_code            INTEGER DEFAULT 0,
+      sync_status            TEXT DEFAULT 'synced',
+      updated_at             TEXT,
+      created_at             TEXT
+    )
+  ''');
+          await db.execute('''
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_refining_server_id
+    ON refining_records (server_id)
+    WHERE server_id IS NOT NULL
+  ''');
+          await db.execute('''
+    CREATE TABLE refining_material_cache (
+      id        INTEGER PRIMARY KEY AUTOINCREMENT,
+      item_id   TEXT NOT NULL,
+      name      TEXT NOT NULL,
+      unit      TEXT,
+      cached_at TEXT NOT NULL
+    )
+  ''');
+          await db.execute('''
+    CREATE TABLE refining_process_name_cache (
+      id        INTEGER PRIMARY KEY AUTOINCREMENT,
+      name      TEXT NOT NULL,
+      sort_order INTEGER DEFAULT 0,
+      cached_at TEXT NOT NULL
+    )
+  ''');
+          await db.execute('''
+    CREATE TABLE refining_smelting_lot_cache (
+      id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+      material_id         TEXT NOT NULL,
+      smelting_batch_id   TEXT NOT NULL,
+      batch_no            TEXT,
+      secondary_name      TEXT,
+      material_unit       TEXT,
+      available_qty       REAL,
+      cached_at           TEXT NOT NULL
+    )
+  ''');
+          await db.execute('''
+    CREATE INDEX IF NOT EXISTS idx_refining_smt_lot_mat
+    ON refining_smelting_lot_cache (material_id)
+  ''');
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        },
+        // Optional: Keep onUpgrade minimal for development
+        onUpgrade: (db, oldVersion, newVersion) async {
+          // For development, you can keep this empty or just log
+          print('Database upgraded from $oldVersion to $newVersion');
+          // If you ever need to add migrations later, add them here
         }
-      }
     );
   }
 
@@ -671,5 +747,263 @@ class LocalDbService {
     if (v is int) return v.toDouble();
     return double.tryParse(v.toString());
   }
+
+  // ── Smelting: cache server records ────────────────────────────────────────
+  Future<void> cacheSmeltingRecords(List<SmeltingSummary> records) async {
+    final batch = db.batch();
+    for (final r in records) {
+      batch.rawInsert('''
+        INSERT OR IGNORE INTO smelting_records
+          (server_id, batch_no, doc_date, rotary_no, start_time, end_time,
+           output_qty, status_label, status_code, sync_status,
+           updated_at, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'synced', datetime('now'), ?)
+      ''', [
+        r.id, r.batchNo, r.date, r.rotaryNo, r.startTime, r.endTime,
+        r.outputQty, r.statusLabel, r.statusCode, r.date,
+      ]);
+      batch.rawUpdate('''
+        UPDATE smelting_records
+        SET batch_no=?, doc_date=?, rotary_no=?, start_time=?, end_time=?,
+            output_qty=?, status_label=?, status_code=?,
+            sync_status='synced', updated_at=datetime('now')
+        WHERE server_id=? AND sync_status='synced'
+      ''', [
+        r.batchNo, r.date, r.rotaryNo, r.startTime, r.endTime,
+        r.outputQty, r.statusLabel, r.statusCode, r.id,
+      ]);
+    }
+    await batch.commit(noResult: true);
+  }
+
+  Future<List<Map<String, dynamic>>> getAllSmeltingForDisplay() async {
+    return await db.query('smelting_records', orderBy: 'created_at DESC');
+  }
+
+  Future<List<Map<String, dynamic>>> getQueuedSmelting() async {
+    final rows = await db.query(
+      'sync_queue',
+      where: 'operation = ? AND table_name = ?',
+      whereArgs: [SyncOperation.opCreate, 'smelting-batches'],
+      orderBy: 'created_at DESC',
+    );
+    return rows.map((row) {
+      final payload =
+      jsonDecode(row['payload'] as String) as Map<String, dynamic>;
+      return {
+        'queue_id':   row['id'],
+        'created_at': row['created_at'],
+        'payload':    payload,
+      };
+    }).toList();
+  }
+
+  // ── Smelting material cache ─────────────────────────────────────────────────
+  Future<void> cacheSmeltingMaterials(
+      List<SmeltingMaterialOption> items) async {
+    final batch = db.batch();
+    batch.delete('smelting_material_cache');
+    final now = DateTime.now().toIso8601String();
+    for (final m in items) {
+      batch.insert('smelting_material_cache', {
+        'item_id':   m.id,
+        'name':      m.name,
+        'unit':      m.unit,
+        'cached_at': now,
+      });
+    }
+    await batch.commit(noResult: true);
+  }
+
+  Future<List<SmeltingMaterialOption>> getCachedSmeltingMaterials() async {
+    final rows = await db.query('smelting_material_cache',
+        orderBy: 'name ASC');
+    return rows
+        .map((r) => SmeltingMaterialOption(
+      id:   r['item_id'] as String,
+      name: r['name'] as String,
+      unit: r['unit'] as String?,
+    ))
+        .toList();
+  }
+
+  // ── Smelting BBSU lot cache (per materialId) ────────────────────────────────
+  Future<void> cacheSmeltingBbsuLots(
+      String materialId, List<SmeltingBbsuLot> lots) async {
+    final batch = db.batch();
+    // Per-materialId replace
+    batch.delete('smelting_bbsu_lot_cache',
+        where: 'material_id = ?', whereArgs: [materialId]);
+    final now = DateTime.now().toIso8601String();
+    for (final l in lots) {
+      batch.insert('smelting_bbsu_lot_cache', {
+        'material_id':   materialId,
+        'bbsu_batch_id': l.bbsuBatchId,
+        'batch_no':      l.batchNo,
+        'material_name': l.materialName,
+        'material_unit': l.materialUnit,
+        'available_qty': l.availableQty,
+        'cached_at':     now,
+      });
+    }
+    await batch.commit(noResult: true);
+  }
+
+  Future<List<SmeltingBbsuLot>> getCachedSmeltingBbsuLots(
+      String materialId) async {
+    final rows = await db.query(
+      'smelting_bbsu_lot_cache',
+      where: 'material_id = ?',
+      whereArgs: [materialId],
+      orderBy: 'batch_no ASC',
+    );
+    return rows
+        .map((r) => SmeltingBbsuLot(
+      bbsuBatchId:  r['bbsu_batch_id'] as String,
+      batchNo:      r['batch_no'] as String? ?? '',
+      materialName: r['material_name'] as String? ?? '',
+      materialUnit: r['material_unit'] as String? ?? 'KG',
+      availableQty: (r['available_qty'] as num?)?.toDouble() ?? 0,
+    ))
+        .toList();
+  }
+// ── Refining: cache server records ────────────────────────────────────────
+  Future<void> cacheRefiningRecords(List<RefiningSummary> records) async {
+    final batch = db.batch();
+    for (final r in records) {
+      batch.rawInsert('''
+        INSERT OR IGNORE INTO refining_records
+          (server_id, batch_no, pot_no, doc_date,
+           lpg_consumption, electricity_consumption,
+           status_label, status_code, sync_status,
+           updated_at, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'synced', datetime('now'), ?)
+      ''', [
+        r.id, r.batchNo, r.potNo, r.date,
+        r.lpgConsumption, r.electricityConsumption,
+        r.statusLabel, r.statusCode, r.date,
+      ]);
+      batch.rawUpdate('''
+        UPDATE refining_records
+        SET batch_no=?, pot_no=?, doc_date=?,
+            lpg_consumption=?, electricity_consumption=?,
+            status_label=?, status_code=?,
+            sync_status='synced', updated_at=datetime('now')
+        WHERE server_id=? AND sync_status='synced'
+      ''', [
+        r.batchNo, r.potNo, r.date,
+        r.lpgConsumption, r.electricityConsumption,
+        r.statusLabel, r.statusCode, r.id,
+      ]);
+    }
+    await batch.commit(noResult: true);
+  }
+
+  Future<List<Map<String, dynamic>>> getAllRefiningForDisplay() async {
+    return await db.query('refining_records', orderBy: 'created_at DESC');
+  }
+
+  Future<List<Map<String, dynamic>>> getQueuedRefining() async {
+    final rows = await db.query(
+      'sync_queue',
+      where: 'operation = ? AND table_name = ?',
+      whereArgs: [SyncOperation.opCreate, 'refining'],
+      orderBy: 'created_at DESC',
+    );
+    return rows.map((row) {
+      final payload =
+      jsonDecode(row['payload'] as String) as Map<String, dynamic>;
+      return {
+        'queue_id':   row['id'],
+        'created_at': row['created_at'],
+        'payload':    payload,
+      };
+    }).toList();
+  }
+
+  // ── Refining material cache ─────────────────────────────────────────────────
+  Future<void> cacheRefiningMaterials(List<RefiningMaterialOption> items) async {
+    final batch = db.batch();
+    batch.delete('refining_material_cache');
+    final now = DateTime.now().toIso8601String();
+    for (final m in items) {
+      batch.insert('refining_material_cache', {
+        'item_id':   m.id,
+        'name':      m.name,
+        'unit':      m.unit,
+        'cached_at': now,
+      });
+    }
+    await batch.commit(noResult: true);
+  }
+
+  Future<List<RefiningMaterialOption>> getCachedRefiningMaterials() async {
+    final rows = await db.query('refining_material_cache', orderBy: 'name ASC');
+    return rows.map((r) => RefiningMaterialOption(
+      id:   r['item_id'] as String,
+      name: r['name'] as String,
+      unit: r['unit'] as String?,
+    )).toList();
+  }
+
+  // ── Refining process name cache ─────────────────────────────────────────────
+  Future<void> cacheRefiningProcessNames(List<String> names) async {
+    final batch = db.batch();
+    batch.delete('refining_process_name_cache');
+    final now = DateTime.now().toIso8601String();
+    for (int i = 0; i < names.length; i++) {
+      batch.insert('refining_process_name_cache', {
+        'name':       names[i],
+        'sort_order': i,
+        'cached_at':  now,
+      });
+    }
+    await batch.commit(noResult: true);
+  }
+
+  Future<List<String>> getCachedRefiningProcessNames() async {
+    final rows = await db.query('refining_process_name_cache',
+        orderBy: 'sort_order ASC');
+    return rows.map((r) => r['name'] as String).toList();
+  }
+
+  // ── Refining smelting lot cache (per materialId) ────────────────────────────
+  Future<void> cacheRefiningSmeltingLots(
+      String materialId, List<RefiningSmeltingLot> lots) async {
+    final batch = db.batch();
+    batch.delete('refining_smelting_lot_cache',
+        where: 'material_id = ?', whereArgs: [materialId]);
+    final now = DateTime.now().toIso8601String();
+    for (final l in lots) {
+      batch.insert('refining_smelting_lot_cache', {
+        'material_id':        materialId,
+        'smelting_batch_id':  l.smeltingBatchId,
+        'batch_no':           l.batchNo,
+        'secondary_name':     l.secondaryName,
+        'material_unit':      l.materialUnit,
+        'available_qty':      l.availableQty,
+        'cached_at':          now,
+      });
+    }
+    await batch.commit(noResult: true);
+  }
+
+  Future<List<RefiningSmeltingLot>> getCachedRefiningSmeltingLots(
+      String materialId) async {
+    final rows = await db.query(
+      'refining_smelting_lot_cache',
+      where: 'material_id = ?',
+      whereArgs: [materialId],
+      orderBy: 'batch_no ASC',
+    );
+    return rows.map((r) => RefiningSmeltingLot(
+      smeltingBatchId: r['smelting_batch_id'] as String,
+      batchNo:         r['batch_no'] as String? ?? '',
+      secondaryName:   r['secondary_name'] as String? ?? '',
+      materialUnit:    r['material_unit'] as String? ?? 'KG',
+      availableQty:    (r['available_qty'] as num?)?.toDouble() ?? 0,
+    )).toList();
+  }
+
 
 }

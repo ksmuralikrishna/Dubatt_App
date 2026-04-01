@@ -21,8 +21,8 @@ import 'screens/bbsu/bbsu_list_screen.dart';
 import 'screens/bbsu/bbsu_form_screen.dart';
 import 'screens/smelting/smelting_list_screen.dart';
 import 'screens/smelting/smelting_form_screen.dart';
-// import 'screens/refining/refining_list_screen.dart';
-// import 'screens/refining/refining_form_screen.dart';
+import 'screens/refining/refining_list_screen.dart';
+import 'screens/refining/refining_form_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -53,7 +53,7 @@ class MesApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'MES Portal',
+      title: 'Dubatt Nexus',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light,
       home: const _AppRoot(),
@@ -115,35 +115,35 @@ class MesApp extends StatelessWidget {
           recordId: id, onLogout: root._onLogout));
     }
 
-    // // ── Smelting ───────────────────────────────────────────────
-    // if (name == '/smelting') {
-    //   return _slide(SmeltingListScreen(onLogout: root._onLogout));
-    // }
-    // if (name == '/smelting/create') {
-    //   return _slide(SmeltingFormScreen(onLogout: root._onLogout));
-    // }
-    // if (name.startsWith('/smelting/') && name.endsWith('/edit')) {
-    //   final id = name
-    //       .replaceFirst('/smelting/', '')
-    //       .replaceFirst('/edit', '');
-    //   return _slide(SmeltingFormScreen(
-    //       recordId: id, onLogout: root._onLogout));
-    // }
+    // ── Smelting ───────────────────────────────────────────────
+    if (name == '/smelting') {
+      return _slide(SmeltingListScreen(onLogout: root._onLogout));
+    }
+    if (name == '/smelting/create') {
+      return _slide(SmeltingFormScreen(onLogout: root._onLogout));
+    }
+    if (name.startsWith('/smelting/') && name.endsWith('/edit')) {
+      final id = name
+          .replaceFirst('/smelting/', '')
+          .replaceFirst('/edit', '');
+      return _slide(SmeltingFormScreen(
+          recordId: id, onLogout: root._onLogout));
+    }
 
     // ── Refining ───────────────────────────────────────────────
-    // if (name == '/refining') {
-    //   return _slide(RefiningListScreen(onLogout: root._onLogout));
-    // }
-    // if (name == '/refining/create') {
-    //   return _slide(RefiningFormScreen(onLogout: root._onLogout));
-    // }
-    // if (name.startsWith('/refining/') && name.endsWith('/edit')) {
-    //   final id = name
-    //       .replaceFirst('/refining/', '')
-    //       .replaceFirst('/edit', '');
-    //   return _slide(RefiningFormScreen(
-    //       recordId: id, onLogout: root._onLogout));
-    // }
+    if (name == '/refining') {
+      return _slide(RefiningListScreen(onLogout: root._onLogout));
+    }
+    if (name == '/refining/create') {
+      return _slide(RefiningFormScreen(onLogout: root._onLogout));
+    }
+    if (name.startsWith('/refining/') && name.endsWith('/edit')) {
+      final id = name
+          .replaceFirst('/refining/', '')
+          .replaceFirst('/edit', '');
+      return _slide(RefiningFormScreen(
+          recordId: id, onLogout: root._onLogout));
+    }
 
     // ── 404 ─────────────────────────────────────────────────────
     return _slide(const _NotFoundScreen());
