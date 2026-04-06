@@ -12,10 +12,12 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import 'package:dubatt_app/services/connectivity_service.dart';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
+import '../../services/local_db_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/common/widgets.dart';
 import '../../widgets/common/app_shell.dart';
@@ -60,6 +62,7 @@ class _BbsuFormScreenState extends State<BbsuFormScreen> {
   bool _isSubmitting = false;
   bool _isSubmitted  = false;
   String? _currentId;
+  bool _isPreloadingLots = false;
 
   double _totalInputQty    = 0;
   double _weightedAvgAcid  = 0;
@@ -94,6 +97,7 @@ class _BbsuFormScreenState extends State<BbsuFormScreen> {
   Future<void> _init() async {
     setState(() => _isLoading = true);
     _lots = await BbsuService().getAvailableLots();
+
     if (widget.isCreate) {
       _dateCtrl.text  = DateFormat('yyyy-MM-dd').format(DateTime.now());
       _docNoCtrl.text = await BbsuService().generateBatchNo();
@@ -102,6 +106,27 @@ class _BbsuFormScreenState extends State<BbsuFormScreen> {
       await _loadRecord();
     }
     setState(() => _isLoading = false);
+
+    // Preload all lot summaries into local cache for offline qty assignment.
+    unawaited(_preloadAllLotDataForOffline());
+  }
+
+  Future<void> _preloadAllLotDataForOffline() async {
+    if (!mounted || _isPreloadingLots) return;
+    if (!ConnectivityService().isOnline || _lots.isEmpty) return;
+
+    setState(() => _isPreloadingLots = true);
+    try {
+      await BbsuService().preloadAcidSummariesForLots(
+        _lots.map((l) => l.lotNumber).toList(),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isPreloadingLots = false);
+      } else {
+        _isPreloadingLots = false;
+      }
+    }
   }
 
   Future<void> _loadRecord() async {
@@ -461,6 +486,41 @@ class _BbsuFormScreenState extends State<BbsuFormScreen> {
                   );
                 },
               ),
+
+              if (_isPreloadingLots)
+                Container(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEFF6FF),
+                    borderRadius: BorderRadius.circular(9),
+                    border: Border.all(color: const Color(0xFF93C5FD)),
+                  ),
+                  child: Row(
+                    children: [
+                      const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Color(0xFF1D4ED8),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Preloading lot data for offline use...',
+                          style: GoogleFonts.outfit(
+                            fontSize: 12.5,
+                            color: const Color(0xFF1E3A8A),
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
 
               const SizedBox(height: 8),
 

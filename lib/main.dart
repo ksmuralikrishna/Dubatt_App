@@ -42,6 +42,7 @@ void main() async {
   await AuthService().init();
   await LocalDbService().init();
   await ConnectivityService().init();
+
   AppSyncManager().init();
 
   runApp(const MesApp());

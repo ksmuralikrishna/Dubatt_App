@@ -6,7 +6,8 @@ import 'package:dubatt_app/models/sync_queue_model.dart';
 import 'package:dubatt_app/models/acid_testing_model.dart';
 import 'package:dubatt_app/models/bbsu_model.dart';
 import 'package:dubatt_app/models/smelting_model.dart';
-import 'package:dubatt_app/models/refining_model.dart'; // ✅ ADD THIS IMPORT
+import 'package:dubatt_app/models/refining_model.dart';
+import '../../services/bbsu_service.dart';
 
 class LocalDbService {
   static final LocalDbService _i = LocalDbService._();
@@ -601,6 +602,7 @@ class LocalDbService {
       invoiceQty:    r['invoice_qty'] as double?,
       receiptDate:   r['receipt_date'] as String?,
     )).toList();
+
   }
   Future<void> cacheBbsuRecords(List<BbsuSummary> records) async {
     final batch = db.batch();
@@ -1003,6 +1005,19 @@ class LocalDbService {
       materialUnit:    r['material_unit'] as String? ?? 'KG',
       availableQty:    (r['available_qty'] as num?)?.toDouble() ?? 0,
     )).toList();
+  }
+
+  Future<void> preloadAllAcidSummaries() async {
+    final lots = await getCachedAcidLots();
+
+    for (var lot in lots) {
+      try {
+        // ✅ Just call getAcidSummary() - it will cache automatically
+        await BbsuService().getAcidSummary(lot.lotNo);
+      } catch (e) {
+        print('Failed to preload ${lot.lotNo}: $e');
+      }
+    }
   }
 
 

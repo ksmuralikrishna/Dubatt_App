@@ -96,6 +96,27 @@ class BbsuService {
     }
   }
 
+  /// Preload acid summary rows for all provided lot numbers.
+  /// This is used to make BBSU qty modal fully usable offline.
+  Future<void> preloadAcidSummariesForLots(List<String> lotNos) async {
+    if (!ConnectivityService().isOnline) return;
+
+    // Avoid duplicate requests for repeated lot numbers.
+    final uniqueLotNos = lotNos
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toSet()
+        .toList();
+
+    for (final lotNo in uniqueLotNos) {
+      try {
+        await getAcidSummary(lotNo);
+      } catch (_) {
+        // Ignore per-lot failures; continue preloading remaining lots.
+      }
+    }
+  }
+
   Future<String> generateBatchNo() async {
     if (!ConnectivityService().isOnline) {
       return _fallbackBatchNo();

@@ -367,7 +367,7 @@ const double _tDate    = 100.0;
 const double _tLpg     = 110.0;
 const double _tElec    = 120.0;
 const double _tStatus  = 100.0;
-const double _tActions = 86.0;
+const double _tActions = 100.0;
 
 const double _mBatch   = 130.0;
 const double _mDate    = 100.0;

@@ -132,7 +132,7 @@ class SmeltingService {
     String? status,
     String? rotaryNo,
   }) async {
-    if (!ConnectivityService().isOnline) {
+    if (! ConnectivityService().isOnline) {
       return _listFromLocal(search: search, status: status);
     }
     try {
@@ -225,7 +225,11 @@ class SmeltingService {
           headers: _headers)
           .timeout(const Duration(seconds: 12));
       if (res.statusCode == 200) {
-        return SmeltingRecord.fromJson(jsonDecode(res.body)['data']);
+        final data = jsonDecode(res.body)['data'];
+        print("DATA: $data");
+
+        return SmeltingRecord.fromJson(data);
+        // return SmeltingRecord.fromJson(jsonDecode(res.body)['data']);
       }
       return null;
     } catch (_) {

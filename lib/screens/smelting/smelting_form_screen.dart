@@ -1627,6 +1627,23 @@ class _TempTblRow extends StatelessWidget {
     required this.canDelete, required this.onRemove,
   });
 
+  Future<void> _pickTime(BuildContext context) async {
+    TimeOfDay current = TimeOfDay.now();
+    if (row.timeCtrl.text.isNotEmpty) {
+      try {
+        final parts = row.timeCtrl.text.split(':');
+        current = TimeOfDay(
+            hour: int.parse(parts[0]), minute: int.parse(parts[1]));
+      } catch (_) {}
+    }
+    final picked =
+    await showTimePicker(context: context, initialTime: current);
+    if (picked != null) {
+      row.timeCtrl.text =
+      '${picked.hour.toString().padLeft(2, '0')}:${picked.minute.toString().padLeft(2, '0')}';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -1636,8 +1653,47 @@ class _TempTblRow extends StatelessWidget {
         SizedBox(width: 36, child: Center(child: Text('${index + 1}',
             style: GoogleFonts.outfit(fontSize: 12, fontWeight: FontWeight.w700,
                 color: AppColors.green)))),
-        SizedBox(width: 100, child: Padding(padding: const EdgeInsets.all(5),
-            child: _tblInput(controller: row.timeCtrl, readOnly: isSubmitted, hint: '--:--'))),
+
+        // ── Time — tap to pick ──────────────────────────────────────
+        SizedBox(width: 150, child: Padding(padding: const EdgeInsets.all(5),
+          child: GestureDetector(
+            onTap: isSubmitted ? null : () => _pickTime(context),
+            child: AbsorbPointer(
+              absorbing: true, // always block keyboard; picker handles input
+              child: TextField(
+                controller: row.timeCtrl,
+                readOnly: true,
+                style: GoogleFonts.outfit(fontSize: 12.5, color: AppColors.textDark),
+                decoration: InputDecoration(
+                  hintText: '--:--',
+                  hintStyle: GoogleFonts.outfit(fontSize: 12, color: AppColors.textMuted),
+                  suffixIcon: isSubmitted
+                      ? null
+                      : const Icon(Icons.access_time, size: 14,
+                      color: AppColors.textMuted),
+                  isDense: true, filled: true,
+                  fillColor: isSubmitted
+                      ? const Color(0xFFF0F4F2) : AppColors.greenXLight,
+                  contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 10, vertical: 8),
+                  border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(6),
+                      borderSide: const BorderSide(
+                          color: AppColors.border, width: 1.5)),
+                  enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(6),
+                      borderSide: const BorderSide(
+                          color: AppColors.border, width: 1.5)),
+                  focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(6),
+                      borderSide: const BorderSide(
+                          color: AppColors.green, width: 1.5)),
+                ),
+              ),
+            ),
+          ),
+        )),
+
         SizedBox(width: 200, child: Padding(padding: const EdgeInsets.all(5),
             child: _tblInput(controller: row.insideCtrl, readOnly: isSubmitted,
                 hint: '°C', numeric: true))),

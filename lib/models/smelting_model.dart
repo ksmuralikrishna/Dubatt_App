@@ -234,7 +234,7 @@ class SmeltingProcessDetail {
   final String processName;
   final String? startTime;
   final String? endTime;
-  final int totalTime; // minutes
+  final int totalTime;
   final String? firingMode;
 
   const SmeltingProcessDetail({
@@ -250,9 +250,16 @@ class SmeltingProcessDetail {
       processName: json['process_name']?.toString() ?? '',
       startTime:   json['start_time']?.toString(),
       endTime:     json['end_time']?.toString(),
-      totalTime:   (json['total_time'] as num?)?.toInt() ?? 0,
+      totalTime:   (_toDouble(json['total_time']) ?? 0).toInt(),
       firingMode:  json['firing_mode']?.toString(),
     );
+  }
+
+  static double? _toDouble(dynamic v) {
+    if (v == null) return null;
+    if (v is double) return v;
+    if (v is int) return v.toDouble();
+    return double.tryParse(v.toString());
   }
 
   Map<String, dynamic> toJson() => {
@@ -466,7 +473,7 @@ class SmeltingSummary {
   });
 
   factory SmeltingSummary.fromJson(Map<String, dynamic> json) {
-    final code        = (json['status'] as num?)?.toInt() ?? 0;
+    final code = int.tryParse(json['status']?.toString() ?? '0') ?? 0;
     final isSubmitted = code >= 1 || json['status'] == 'submitted';
     return SmeltingSummary(
       id:                 json['id']?.toString() ?? '',
