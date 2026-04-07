@@ -341,6 +341,8 @@ class SmeltingRecord {
   // Output — simplified: single material + qty (no block window)
   final String? outputMaterial;
   final double? outputQty;
+  final List<Map<String, dynamic>>? outputBlocks;  // ← ADD THIS
+
   final List<SmeltingRawMaterial> rawMaterials;
   final List<SmeltingFluxChemical> fluxChemicals;
   final List<SmeltingProcessDetail> processDetails;
@@ -365,6 +367,7 @@ class SmeltingRecord {
     this.rotaryPowerConsumption,
     this.outputMaterial,
     this.outputQty,
+    this.outputBlocks,
     this.rawMaterials = const [],
     this.fluxChemicals = const [],
     this.processDetails = const [],
@@ -396,6 +399,9 @@ class SmeltingRecord {
       rotaryPowerConsumption: _toDouble(json['rotary_power_consumption']),
       outputMaterial:         json['output_material']?.toString(),
       outputQty:              _toDouble(json['output_qty']),
+      outputBlocks:   (json['output_blocks'] as List?)  // ← ADD THIS
+          ?.map((b) => Map<String, dynamic>.from(b))
+          .toList(),
       rawMaterials:   (json['raw_materials'] as List? ?? [])
           .map((r) => SmeltingRawMaterial.fromJson(r)).toList(),
       fluxChemicals:  (json['flux_chemicals'] as List? ?? [])
@@ -426,6 +432,7 @@ class SmeltingRecord {
     'rotary_power_consumption': rotaryPowerConsumption,
     'output_material':         outputMaterial,
     'output_qty':              outputQty,
+    'output_blocks':           outputBlocks,
     'raw_materials':           rawMaterials.map((r) => r.toJson()).toList(),
     'flux_chemicals':          fluxChemicals.map((f) => f.toJson()).toList(),
     'process_details':         processDetails.map((p) => p.toJson()).toList(),

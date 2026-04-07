@@ -120,6 +120,29 @@ class RefiningService {
     }
   }
 
+  /// Preloads and caches smelting stock lots for all provided materialIds.
+  /// This ensures refining stock modal works fully offline for any material.
+  Future<void> preloadSmeltingLotsForMaterials(
+    List<String> materialIds,
+  ) async {
+    if (!ConnectivityService().isOnline) return;
+
+    final uniqueIds = materialIds
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toSet()
+        .toList();
+
+    for (final materialId in uniqueIds) {
+      try {
+        // excludeRefiningId intentionally not used for shared offline cache.
+        await getSmeltingLots(materialId);
+      } catch (_) {
+        // Ignore per-material failures and continue preloading others.
+      }
+    }
+  }
+
   // ── Generate batch no ───────────────────────────────────────────────────────
   Future<String> generateBatchNo() async {
     if (!ConnectivityService().isOnline) return _fallback();

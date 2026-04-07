@@ -25,6 +25,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import 'package:dubatt_app/services/connectivity_service.dart';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -97,6 +98,7 @@ class _RefiningFormScreenState extends State<RefiningFormScreen> {
   bool _isSubmitting = false;
   bool _isSubmitted  = false;
   String? _currentId;
+  bool _isPreloadingStock = false;
 
   @override
   void initState() {
@@ -131,6 +133,27 @@ class _RefiningFormScreenState extends State<RefiningFormScreen> {
       await _loadRecord();
     }
     setState(() => _isLoading = false);
+
+    // Preload smelting stock for all materials to support full offline use.
+    unawaited(_preloadAllStockForOffline());
+  }
+
+  Future<void> _preloadAllStockForOffline() async {
+    if (!mounted || _isPreloadingStock) return;
+    if (!ConnectivityService().isOnline || _materials.isEmpty) return;
+
+    setState(() => _isPreloadingStock = true);
+    try {
+      await RefiningService().preloadSmeltingLotsForMaterials(
+        _materials.map((m) => m.id).toList(),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isPreloadingStock = false);
+      } else {
+        _isPreloadingStock = false;
+      }
+    }
   }
 
   Future<void> _loadRecord() async {
@@ -704,6 +727,41 @@ class _RefiningFormScreenState extends State<RefiningFormScreen> {
                   return _OfflineBanner();
                 },
               ),
+
+              if (_isPreloadingStock)
+                Container(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEFF6FF),
+                    borderRadius: BorderRadius.circular(9),
+                    border: Border.all(color: const Color(0xFF93C5FD)),
+                  ),
+                  child: Row(
+                    children: [
+                      const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Color(0xFF1D4ED8),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Preloading stock for offline use...',
+                          style: GoogleFonts.outfit(
+                            fontSize: 12.5,
+                            color: const Color(0xFF1E3A8A),
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
 
               const SizedBox(height: 8),
 

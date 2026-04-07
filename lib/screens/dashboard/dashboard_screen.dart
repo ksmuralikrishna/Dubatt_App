@@ -50,7 +50,73 @@ class _DashboardScreenState extends State<DashboardScreen> {
       if (mounted) setState(() {});
     };
   }
+  Future<void> _downloadMasterData() async {
+    if (!ConnectivityService().isOnline) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Row(children: [
+          const Icon(Icons.wifi_off, color: Colors.white, size: 16),
+          const SizedBox(width: 8),
+          Text('You are offline. Cannot download master data.',
+              style: GoogleFonts.outfit(color: Colors.white, fontSize: 13)),
+        ]),
+        backgroundColor: AppColors.error,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
+        margin: const EdgeInsets.all(16),
+      ));
+      return;
+    }
 
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Row(children: [
+        const SizedBox(width: 16, height: 16,
+            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)),
+        const SizedBox(width: 10),
+        Text('Downloading master data…',
+            style: GoogleFonts.outfit(color: Colors.white, fontSize: 13)),
+      ]),
+      backgroundColor: AppColors.green,
+      duration: const Duration(seconds: 60),
+      behavior: SnackBarBehavior.floating,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
+      margin: const EdgeInsets.all(16),
+    ));
+
+    try {
+      // await SyncService().downloadMasterData();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Row(children: [
+          const Icon(Icons.check_circle_outline, color: Colors.white, size: 16),
+          const SizedBox(width: 8),
+          Text('Master data downloaded successfully.',
+              style: GoogleFonts.outfit(color: Colors.white, fontSize: 13)),
+        ]),
+        backgroundColor: AppColors.green,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
+        margin: const EdgeInsets.all(16),
+        duration: const Duration(seconds: 3),
+      ));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Row(children: [
+          const Icon(Icons.error_outline, color: Colors.white, size: 16),
+          const SizedBox(width: 8),
+          Expanded(child: Text('Download failed: $e',
+              style: GoogleFonts.outfit(color: Colors.white, fontSize: 13))),
+        ]),
+        backgroundColor: AppColors.error,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
+        margin: const EdgeInsets.all(16),
+        duration: const Duration(seconds: 4),
+      ));
+    }
+  }
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
     try {
@@ -221,6 +287,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     if (isTablet) ...[
                       const SizedBox(width: 12),
                       _SyncStatusBadge(),        // ✅ sync status
+                      const SizedBox(width: 8),
+                      _DownloadMasterDataBtn(onTap: _downloadMasterData),
                       const SizedBox(width: 12),
                       _DateChip(date: today),
                     ],
@@ -232,6 +300,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     children: [
                       _SyncStatusBadge(),        // ✅ sync status
                       const SizedBox(width: 8),
+                      const SizedBox(width: 8),
+                      _DownloadMasterDataBtn(onTap: _downloadMasterData),
                       _DateChip(date: today),
                     ],
                   ),
@@ -322,6 +392,67 @@ class _DashboardScreenState extends State<DashboardScreen> {
 // ─────────────────────────────────────────────
 // Sync status badge
 // ─────────────────────────────────────────────
+class _DownloadMasterDataBtn extends StatefulWidget {
+  final VoidCallback onTap;
+  const _DownloadMasterDataBtn({required this.onTap});
+
+  @override
+  State<_DownloadMasterDataBtn> createState() => _DownloadMasterDataBtnState();
+}
+
+class _DownloadMasterDataBtnState extends State<_DownloadMasterDataBtn> {
+  bool _loading = false;
+
+  Future<void> _handle() async {
+    if (_loading) return;
+    setState(() => _loading = true);
+    try {
+      await Future.microtask(widget.onTap);
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: _handle,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: const Color(0xFFEFF6FF),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: const Color(0xFF93C5FD)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _loading
+                ? const SizedBox(
+              width: 11,
+              height: 11,
+              child: CircularProgressIndicator(
+                strokeWidth: 1.5,
+                color: Color(0xFF1D4ED8),
+              ),
+            )
+                : const Icon(Icons.download_outlined,
+                size: 13, color: Color(0xFF1D4ED8)),
+            const SizedBox(width: 5),
+            Text(
+              _loading ? 'Downloading…' : 'Master Data',
+              style: GoogleFonts.outfit(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: const Color(0xFF1D4ED8),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
 class _SyncStatusBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {

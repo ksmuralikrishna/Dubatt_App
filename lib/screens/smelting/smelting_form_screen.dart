@@ -13,6 +13,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import 'package:dubatt_app/services/connectivity_service.dart';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -65,7 +66,10 @@ class _SmeltingFormScreenState extends State<SmeltingFormScreen> {
   // ── Output (simplified — single qty field) ─────────────────────────────────
   List<SmeltingMaterialOption> _materials = [];
   String? _outputMaterialId;
-  final _outputQtyCtrl = TextEditingController();
+  // final _outputQtyCtrl = TextEditingController();
+  List<_OutputBlock> _outputBlocks = [];
+  double get _outputTotalQty =>
+      _outputBlocks.fold(0, (s, b) => s + b.weight);
 
   // ── Raw materials ──────────────────────────────────────────────────────────
   final List<_RawRow>  _rawRows  = [];
@@ -89,6 +93,7 @@ class _SmeltingFormScreenState extends State<SmeltingFormScreen> {
   bool _isSubmitting = false;
   bool _isSubmitted  = false;
   String? _currentId;
+  bool _isPreloadingStock = false;
 
   @override
   void initState() {
@@ -106,14 +111,34 @@ class _SmeltingFormScreenState extends State<SmeltingFormScreen> {
     _lpgCtrl.dispose(); _o2Ctrl.dispose();
     _idInitCtrl.dispose(); _idFinalCtrl.dispose();
     _rotInitCtrl.dispose(); _rotFinalCtrl.dispose();
-    _outputQtyCtrl.dispose(); _chargeCtrl.dispose();
+    // _outputQtyCtrl.dispose(); _chargeCtrl.dispose();
+    for (final b in _outputBlocks) b.dispose();
     for (final r in _rawRows)  r.dispose();
     for (final f in _fluxRows) f.dispose();
     for (final p in _processRows) p.dispose();
     for (final t in _tempRows) t.dispose();
     super.dispose();
   }
+  void _initDefaultOutputBlocks() {
+    _outputBlocks = List.generate(11, (i) => _OutputBlock(blockNo: i + 1));
+  }
 
+  Future<void> _openOutputBlockModal() async {
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _OutputBlockModal(
+        initialBlocks: _outputBlocks,
+        onConfirm: (blocks) {
+          setState(() {
+            for (final b in _outputBlocks) b.dispose();
+            _outputBlocks = blocks;
+          });
+        },
+      ),
+    );
+  }
   Future<void> _init() async {
     setState(() => _isLoading = true);
     _materials = await SmeltingService().getMaterials();
@@ -121,11 +146,32 @@ class _SmeltingFormScreenState extends State<SmeltingFormScreen> {
     if (widget.isCreate) {
       _dateCtrl.text    = DateFormat('yyyy-MM-dd').format(DateTime.now());
       _batchNoCtrl.text = await SmeltingService().generateBatchNo();
-      _addRawRow(); _addFluxRow(); _addTempRow();
+      _addRawRow(); _addFluxRow(); _addTempRow(); _initDefaultOutputBlocks();
     } else {
       await _loadRecord();
     }
     setState(() => _isLoading = false);
+
+    // Preload stock for all materials for offline usage.
+    unawaited(_preloadAllStockForOffline());
+  }
+
+  Future<void> _preloadAllStockForOffline() async {
+    if (!mounted || _isPreloadingStock) return;
+    if (!ConnectivityService().isOnline || _materials.isEmpty) return;
+
+    setState(() => _isPreloadingStock = true);
+    try {
+      await SmeltingService().preloadBbsuLotsForMaterials(
+        _materials.map((m) => m.id).toList(),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isPreloadingStock = false);
+      } else {
+        _isPreloadingStock = false;
+      }
+    }
   }
 
   Future<void> _loadRecord() async {
@@ -152,8 +198,21 @@ class _SmeltingFormScreenState extends State<SmeltingFormScreen> {
     _calcConsumption('id'); _calcConsumption('rot');
 
     _outputMaterialId = r.outputMaterial;
-    _outputQtyCtrl.text = r.outputQty != null && r.outputQty! > 0
-        ? r.outputQty!.toStringAsFixed(3) : '';
+    // _outputQtyCtrl.text = r.outputQty != null && r.outputQty! > 0
+    //     ? r.outputQty!.toStringAsFixed(3) : '';
+    // Load saved blocks, or fall back to 11 empty defaults
+    if (r.outputBlocks != null && r.outputBlocks!.isNotEmpty) {
+      _outputBlocks = r.outputBlocks!.asMap().entries.map((e) {
+        final v = e.value['weight_kg'];
+        final weight = (v is double) ? v : (v is int) ? v.toDouble() : double.tryParse(v?.toString() ?? '') ?? 0;
+        return _OutputBlock(blockNo: e.key + 1, weight: weight);
+      }).toList();
+    } else {
+      _initDefaultOutputBlocks();
+      if (r.outputQty != null && r.outputQty! > 0) {
+        _outputBlocks[0].weightCtrl.text = r.outputQty!.toStringAsFixed(3);
+      }
+    }
 
     for (final rm in r.rawMaterials) _addRawRow(data: rm);
     if (r.rawMaterials.isEmpty) _addRawRow();
@@ -504,7 +563,11 @@ class _SmeltingFormScreenState extends State<SmeltingFormScreen> {
       'rotary_power_consumption': (rotInit != null && rotFin != null && rotFin >= rotInit)
           ? rotFin - rotInit : null,
       'output_material': _outputMaterialId,
-      'output_qty':      double.tryParse(_outputQtyCtrl.text),
+      'output_qty':      _outputTotalQty > 0 ? _outputTotalQty : null,
+      'output_blocks':   _outputBlocks
+          .where((b) => b.weight > 0)
+          .map((b) => {'block_no': b.blockNo, 'weight_kg': b.weight})
+          .toList(),
       'raw_materials':       rawMats,
       'flux_chemicals':      fluxChems,
       'process_details':     procDetails,
@@ -651,6 +714,41 @@ class _SmeltingFormScreenState extends State<SmeltingFormScreen> {
                   return _OfflineBanner();
                 },
               ),
+
+              if (_isPreloadingStock)
+                Container(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEFF6FF),
+                    borderRadius: BorderRadius.circular(9),
+                    border: Border.all(color: const Color(0xFF93C5FD)),
+                  ),
+                  child: Row(
+                    children: [
+                      const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Color(0xFF1D4ED8),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Preloading stock for offline use...',
+                          style: GoogleFonts.outfit(
+                            fontSize: 12.5,
+                            color: const Color(0xFF1E3A8A),
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
 
               const SizedBox(height: 8),
 
@@ -822,31 +920,77 @@ class _SmeltingFormScreenState extends State<SmeltingFormScreen> {
                   _SectionCard(
                     icon: Icons.output_outlined,
                     title: 'Output Window',
-                    child: Row(children: [
-                      Expanded(child: _DropField(
-                        label: 'Material',
-                        value: _outputMaterialId?.isNotEmpty == true
-                            ? _outputMaterialId : null,
-                        hint: 'Select material…',
-                        items: _materials.map((m) => DropdownMenuItem(
-                          value: m.id, child: Text(m.name,
-                            style: GoogleFonts.outfit(fontSize: 13)),
-                        )).toList(),
-                        enabled: !_isSubmitted,
-                        onChanged: (v) => setState(() {
-                          _outputMaterialId = v;
-                          _outputQtyCtrl.clear();
-                        }),
-                      )),
-                      const SizedBox(width: 14),
-                      Expanded(child: MesTextField(
-                        label: 'Quantity (KG)',
-                        controller: _outputQtyCtrl,
-                        readOnly: _isSubmitted,
-                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                        inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))],
-                        prefixIcon: Icons.scale_outlined,
-                      )),
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Row(children: [
+                        Expanded(child: _DropField(
+                          label: 'Material',
+                          value: _outputMaterialId?.isNotEmpty == true
+                              ? _outputMaterialId : null,
+                          hint: 'Select material…',
+                          items: _materials.map((m) => DropdownMenuItem(
+                            value: m.id,
+                            child: Text(m.name,
+                                style: GoogleFonts.outfit(fontSize: 13)),
+                          )).toList(),
+                          enabled: !_isSubmitted,
+                          onChanged: (v) => setState(() => _outputMaterialId = v),
+                        )),
+                      ]),
+                      const SizedBox(height: 14),
+                      // Tappable block summary chip
+                      GestureDetector(
+                        onTap: _isSubmitted ? null : _openOutputBlockModal,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 14, vertical: 12),
+                          decoration: BoxDecoration(
+                            color: _outputTotalQty > 0
+                                ? const Color(0xFFD1FAE5)
+                                : AppColors.greenXLight,
+                            border: Border.all(
+                              color: _outputTotalQty > 0
+                                  ? AppColors.green : AppColors.border,
+                              width: 1.5,
+                            ),
+                            borderRadius: BorderRadius.circular(9),
+                          ),
+                          child: Row(children: [
+                            const Icon(Icons.view_module_outlined,
+                                size: 16, color: AppColors.green),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      _outputTotalQty > 0
+                                          ? 'Total: ${_outputTotalQty.toStringAsFixed(3)} KG'
+                                          : _isSubmitted
+                                          ? 'No output recorded'
+                                          : 'Tap to enter block weights…',
+                                      style: GoogleFonts.outfit(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w600,
+                                        color: _outputTotalQty > 0
+                                            ? AppColors.textDark
+                                            : AppColors.textMuted,
+                                      ),
+                                    ),
+                                    if (_outputTotalQty > 0)
+                                      Text(
+                                        '${_outputBlocks.where((b) => b.weight > 0).length} block(s) recorded',
+                                        style: GoogleFonts.outfit(
+                                            fontSize: 11,
+                                            color: AppColors.green),
+                                      ),
+                                  ]),
+                            ),
+                            if (!_isSubmitted)
+                              const Icon(Icons.chevron_right,
+                                  size: 16, color: AppColors.textMuted),
+                          ]),
+                        ),
+                      ),
                     ]),
                   ),
                 ]);
@@ -904,6 +1048,19 @@ class _SmeltingFormScreenState extends State<SmeltingFormScreen> {
 // ─────────────────────────────────────────────
 // Data holders
 // ─────────────────────────────────────────────
+
+class _OutputBlock {
+  final TextEditingController weightCtrl;
+  int blockNo;
+
+  _OutputBlock({required this.blockNo, double weight = 0})
+      : weightCtrl = TextEditingController(
+      text: weight > 0 ? weight.toStringAsFixed(3) : '');
+
+  double get weight => double.tryParse(weightCtrl.text) ?? 0;
+
+  void dispose() => weightCtrl.dispose();
+}
 class _RawRow {
   final List<SmeltingMaterialOption> materials;
   String materialId;
@@ -2092,7 +2249,372 @@ class _SubmitBtn extends StatelessWidget {
     ),
   );
 }
+// ─────────────────────────────────────────────
+// Output Block Modal
+// 11 default rows; ADD adds more; total auto-calculates
+// ─────────────────────────────────────────────
+class _OutputBlockModal extends StatefulWidget {
+  final List<_OutputBlock> initialBlocks;
+  final ValueChanged<List<_OutputBlock>> onConfirm;
 
+  const _OutputBlockModal({
+    required this.initialBlocks,
+    required this.onConfirm,
+  });
+
+  @override
+  State<_OutputBlockModal> createState() => _OutputBlockModalState();
+}
+
+class _OutputBlockModalState extends State<_OutputBlockModal> {
+  late List<_OutputBlock> _blocks;
+
+  @override
+  void initState() {
+    super.initState();
+    // Deep-copy so cancelling discards changes
+    _blocks = widget.initialBlocks
+        .map((b) => _OutputBlock(blockNo: b.blockNo, weight: b.weight))
+        .toList();
+  }
+
+  @override
+  void dispose() {
+    // Only dispose our local copies — originals are owned by parent
+    for (final b in _blocks) b.dispose();
+    super.dispose();
+  }
+
+  double get _total => _blocks.fold(0, (s, b) => s + b.weight);
+
+  void _addBlock() {
+    setState(() {
+      _blocks.add(_OutputBlock(blockNo: _blocks.length + 1));
+    });
+  }
+
+  void _removeBlock(int i) {
+    if (_blocks.length <= 1) return;
+    setState(() {
+      _blocks[i].dispose();
+      _blocks.removeAt(i);
+      // Renumber
+      for (int j = 0; j < _blocks.length; j++) {
+        _blocks[j].blockNo = j + 1;
+      }
+    });
+  }
+
+  void _confirm() {
+    // Return a fresh list owned by the parent
+    final confirmed = _blocks
+        .map((b) => _OutputBlock(blockNo: b.blockNo, weight: b.weight))
+        .toList();
+    // Dispose the modal's copies first
+    for (final b in _blocks) b.dispose();
+    _blocks = []; // prevent double-dispose in dispose()
+    widget.onConfirm(confirmed);
+    Navigator.of(context).pop();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return DraggableScrollableSheet(
+      initialChildSize: 0.75,
+      maxChildSize: 0.93,
+      minChildSize: 0.4,
+      builder: (ctx, scrollCtrl) => Container(
+        decoration: const BoxDecoration(
+          color: AppColors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+        ),
+        child: Column(children: [
+          // Handle
+          Center(
+            child: Container(
+              margin: const EdgeInsets.only(top: 10),
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                  color: AppColors.border,
+                  borderRadius: BorderRadius.circular(2)),
+            ),
+          ),
+          // Header
+          Container(
+            padding: const EdgeInsets.fromLTRB(20, 14, 20, 14),
+            decoration: const BoxDecoration(
+              color: AppColors.greenLight,
+              border: Border(bottom: BorderSide(color: AppColors.border)),
+            ),
+            child: Row(children: [
+              const Icon(Icons.view_module_outlined,
+                  size: 16, color: AppColors.green),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Output Blocks',
+                  style: AppTextStyles.subheading(color: AppColors.green),
+                ),
+              ),
+              // ADD button
+              GestureDetector(
+                onTap: _addBlock,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: AppColors.green,
+                    borderRadius: BorderRadius.circular(7),
+                  ),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    const Icon(Icons.add, size: 13, color: Colors.white),
+                    const SizedBox(width: 4),
+                    Text('Add',
+                        style: GoogleFonts.outfit(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white)),
+                  ]),
+                ),
+              ),
+              const SizedBox(width: 10),
+              GestureDetector(
+                onTap: () => Navigator.of(context).pop(),
+                child: const Icon(Icons.close,
+                    size: 18, color: AppColors.textMuted),
+              ),
+            ]),
+          ),
+
+          // Instruction
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 10, 20, 4),
+            child: Text(
+              'Enter the weight of each output block in KG.',
+              style: AppTextStyles.caption(),
+            ),
+          ),
+
+          // Table
+          Expanded(
+            child: SingleChildScrollView(
+              controller: scrollCtrl,
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+              child: Column(children: [
+                // Table header
+                Container(
+                  decoration: const BoxDecoration(
+                    color: AppColors.greenLight,
+                    border: Border(
+                        bottom: BorderSide(
+                            color: AppColors.border, width: 2)),
+                  ),
+                  child: Row(children: [
+                    _bh('Block', 80),
+                    _bh('Weight (KG)', 160),
+                    _bh('', 36),
+                  ]),
+                ),
+                // Rows
+                StatefulBuilder(builder: (_, ss) {
+                  return Column(
+                    children: _blocks.asMap().entries.map((e) {
+                      final i = e.key;
+                      final b = e.value;
+                      return Container(
+                        decoration: const BoxDecoration(
+                          border: Border(
+                              bottom: BorderSide(
+                                  color: AppColors.borderLight)),
+                        ),
+                        child: Row(children: [
+                          // Block label
+                          SizedBox(
+                            width: 80,
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 10),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 8, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color: AppColors.greenLight,
+                                  borderRadius:
+                                  BorderRadius.circular(5),
+                                ),
+                                child: Text(
+                                  'Block ${b.blockNo}',
+                                  style: GoogleFonts.outfit(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                    color: AppColors.green,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          // Weight input
+                          SizedBox(
+                            width: 160,
+                            child: Padding(
+                              padding: const EdgeInsets.all(6),
+                              child: TextField(
+                                controller: b.weightCtrl,
+                                keyboardType:
+                                const TextInputType.numberWithOptions(
+                                    decimal: true),
+                                inputFormatters: [
+                                  FilteringTextInputFormatter.allow(
+                                      RegExp(r'[0-9.]'))
+                                ],
+                                onChanged: (_) => ss(() {}),
+                                style: GoogleFonts.outfit(
+                                    fontSize: 13,
+                                    color: AppColors.textDark),
+                                decoration: InputDecoration(
+                                  hintText: '0.000',
+                                  hintStyle: GoogleFonts.outfit(
+                                      fontSize: 12,
+                                      color: AppColors.textMuted),
+                                  isDense: true,
+                                  filled: true,
+                                  fillColor: AppColors.greenXLight,
+                                  contentPadding:
+                                  const EdgeInsets.symmetric(
+                                      horizontal: 10,
+                                      vertical: 8),
+                                  border: OutlineInputBorder(
+                                      borderRadius:
+                                      BorderRadius.circular(6),
+                                      borderSide: const BorderSide(
+                                          color: AppColors.border,
+                                          width: 1.5)),
+                                  enabledBorder: OutlineInputBorder(
+                                      borderRadius:
+                                      BorderRadius.circular(6),
+                                      borderSide: const BorderSide(
+                                          color: AppColors.border,
+                                          width: 1.5)),
+                                  focusedBorder: OutlineInputBorder(
+                                      borderRadius:
+                                      BorderRadius.circular(6),
+                                      borderSide: const BorderSide(
+                                          color: AppColors.green,
+                                          width: 1.5)),
+                                ),
+                              ),
+                            ),
+                          ),
+                          // Delete
+                          SizedBox(
+                            width: 36,
+                            child: Center(
+                              child: _blocks.length > 1
+                                  ? _delBtn(() {
+                                _removeBlock(i);
+                                ss(() {});
+                              })
+                                  : const SizedBox.shrink(),
+                            ),
+                          ),
+                        ]),
+                      );
+                    }).toList(),
+                  );
+                }),
+                // Total footer
+                StatefulBuilder(builder: (_, ss) {
+                  // Listen on all controllers
+                  for (final b in _blocks) {
+                    b.weightCtrl.addListener(() => ss(() {}));
+                  }
+                  return Container(
+                    decoration: const BoxDecoration(
+                      color: AppColors.greenLight,
+                      border: Border(
+                          top: BorderSide(
+                              color: AppColors.border, width: 2)),
+                    ),
+                    child: Row(children: [
+                      const SizedBox(
+                        width: 80,
+                        child: Padding(
+                          padding: EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 10),
+                          child: Align(
+                            alignment: Alignment.centerRight,
+                            child: SizedBox.shrink(),
+                          ),
+                        ),
+                      ),
+                      SizedBox(
+                        width: 160,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 10),
+                          child: Row(
+                              mainAxisAlignment:
+                              MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text('TOTAL',
+                                    style: AppTextStyles.label(
+                                        color: AppColors.green)),
+                                Text(
+                                  '${_total.toStringAsFixed(3)} KG',
+                                  style: GoogleFonts.outfit(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w800,
+                                    color: AppColors.green,
+                                  ),
+                                ),
+                              ]),
+                        ),
+                      ),
+                      const SizedBox(width: 36),
+                    ]),
+                  );
+                }),
+              ]),
+            ),
+          ),
+
+          // Footer actions
+          Container(
+            padding:
+            const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+            decoration: const BoxDecoration(
+                border: Border(
+                    top: BorderSide(color: AppColors.borderLight))),
+            child: Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  MesOutlineButton(
+                    label: 'Cancel',
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
+                  const SizedBox(width: 12),
+                  MesButton(
+                    label: 'Confirm',
+                    icon: Icons.check,
+                    onPressed: _confirm,
+                  ),
+                ]),
+          ),
+        ]),
+      ),
+    );
+  }
+
+  Widget _bh(String label, double w) => SizedBox(
+    width: w,
+    child: Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+      child: Text(label.toUpperCase(),
+          style: AppTextStyles.label(color: AppColors.green)),
+    ),
+  );
+}
 // ─────────────────────────────────────────────
 // File-level table helpers
 // ─────────────────────────────────────────────
