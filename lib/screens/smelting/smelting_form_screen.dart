@@ -817,8 +817,9 @@ class _SmeltingFormScreenState extends State<SmeltingFormScreen> {
               LayoutBuilder(builder: (_, box) {
                 final wide = box.maxWidth > 700;
                 if (wide) {
+                  const rawCardWidth = 555.0 + 32;
                   return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Expanded(child: _RawCard(
+                    SizedBox(width: rawCardWidth,child: _RawCard(
                       rows: _rawRows, isSubmitted: _isSubmitted, materials: _materials,
                       totalQty: _rawTotalQty, totalExp: _rawTotalExpected,
                       onAdd: _isSubmitted ? null : _addRawRow,
@@ -1463,22 +1464,43 @@ class _TempCard extends StatelessWidget {
       padding: EdgeInsets.zero,
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         _cardHead('Temperature Record', Icons.thermostat_outlined, onAdd),
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Column(children: [
-            _tblHeader(
-              ['#', 'Time', 'Inside Temp Before Charging (°C)',
-                'Process Gas Chamber', 'Shell', 'Bag House', ''],
-              [36, 100, 200, 150, 120, 120, 36],
-            ),
-            ...rows.asMap().entries.map((e) => _TempTblRow(
-              index: e.key, row: e.value, isSubmitted: isSubmitted,
-              canDelete: rows.length > 1 && !isSubmitted,
-              onRemove: onRemove == null ? null : () => onRemove!(e.key),
-            )),
-          ]),
-        ),
+        Column(children: [
+          // Responsive header
+          Container(
+            decoration: const BoxDecoration(color: AppColors.greenLight,
+                border: Border(bottom: BorderSide(color: AppColors.border, width: 2))),
+            child: Row(children: [
+              const SizedBox(width: 40, child: SizedBox.shrink()), // Spacer for row number
+              const Expanded(flex: 2, child: _HeaderCell('Time')),
+              const Expanded(flex: 3, child: _HeaderCell('Inside Temp Before Charging (°C)')),
+              const Expanded(flex: 2, child: _HeaderCell('Process Gas Chamber')),
+              const Expanded(flex: 2, child: _HeaderCell('Shell')),
+              const Expanded(flex: 2, child: _HeaderCell('Bag House')),
+              const SizedBox(width: 40, child: SizedBox.shrink()), // Spacer for delete button
+            ]),
+          ),
+          ...rows.asMap().entries.map((e) => _TempTblRow(
+            index: e.key, row: e.value, isSubmitted: isSubmitted,
+            canDelete: rows.length > 1 && !isSubmitted,
+            onRemove: onRemove == null ? null : () => onRemove!(e.key),
+          )),
+        ]),
       ]),
+    );
+  }
+}
+
+// Helper widget for responsive headers
+class _HeaderCell extends StatelessWidget {
+  final String label;
+  const _HeaderCell(this.label);
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+      child: Text(label.toUpperCase(),
+          style: AppTextStyles.label(color: AppColors.green)),
     );
   }
 }
@@ -1807,60 +1829,81 @@ class _TempTblRow extends StatelessWidget {
       decoration: const BoxDecoration(
           border: Border(bottom: BorderSide(color: AppColors.borderLight))),
       child: Row(children: [
-        SizedBox(width: 36, child: Center(child: Text('${index + 1}',
+        // Row number - fixed small width
+        SizedBox(width: 40, child: Center(child: Text('${index + 1}',
             style: GoogleFonts.outfit(fontSize: 12, fontWeight: FontWeight.w700,
                 color: AppColors.green)))),
 
-        // ── Time — tap to pick ──────────────────────────────────────
-        SizedBox(width: 150, child: Padding(padding: const EdgeInsets.all(5),
-          child: GestureDetector(
-            onTap: isSubmitted ? null : () => _pickTime(context),
-            child: AbsorbPointer(
-              absorbing: true, // always block keyboard; picker handles input
-              child: TextField(
-                controller: row.timeCtrl,
-                readOnly: true,
-                style: GoogleFonts.outfit(fontSize: 12.5, color: AppColors.textDark),
-                decoration: InputDecoration(
-                  hintText: '--:--',
-                  hintStyle: GoogleFonts.outfit(fontSize: 12, color: AppColors.textMuted),
-                  suffixIcon: isSubmitted
-                      ? null
-                      : const Icon(Icons.access_time, size: 14,
-                      color: AppColors.textMuted),
-                  isDense: true, filled: true,
-                  fillColor: isSubmitted
-                      ? const Color(0xFFF0F4F2) : AppColors.greenXLight,
-                  contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 10, vertical: 8),
-                  border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(6),
-                      borderSide: const BorderSide(
-                          color: AppColors.border, width: 1.5)),
-                  enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(6),
-                      borderSide: const BorderSide(
-                          color: AppColors.border, width: 1.5)),
-                  focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(6),
-                      borderSide: const BorderSide(
-                          color: AppColors.green, width: 1.5)),
+        // Time field - responsive
+        Expanded(
+          flex: 2,
+          child: Padding(padding: const EdgeInsets.all(5),
+            child: GestureDetector(
+              onTap: isSubmitted ? null : () => _pickTime(context),
+              child: AbsorbPointer(
+                absorbing: true,
+                child: TextField(
+                  controller: row.timeCtrl,
+                  readOnly: true,
+                  style: GoogleFonts.outfit(fontSize: 12.5, color: AppColors.textDark),
+                  decoration: InputDecoration(
+                    hintText: '--:--',
+                    hintStyle: GoogleFonts.outfit(fontSize: 12, color: AppColors.textMuted),
+                    suffixIcon: isSubmitted
+                        ? null
+                        : const Icon(Icons.access_time, size: 14, color: AppColors.textMuted),
+                    isDense: true,
+                    filled: true,
+                    fillColor: isSubmitted
+                        ? const Color(0xFFF0F4F2) : AppColors.greenXLight,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(6),
+                        borderSide: const BorderSide(color: AppColors.border, width: 1.5)),
+                    enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(6),
+                        borderSide: const BorderSide(color: AppColors.border, width: 1.5)),
+                    focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(6),
+                        borderSide: const BorderSide(color: AppColors.green, width: 1.5)),
+                  ),
                 ),
               ),
             ),
           ),
-        )),
+        ),
 
-        SizedBox(width: 200, child: Padding(padding: const EdgeInsets.all(5),
-            child: _tblInput(controller: row.insideCtrl, readOnly: isSubmitted,
-                hint: '°C', numeric: true))),
-        SizedBox(width: 150, child: Padding(padding: const EdgeInsets.all(5),
-            child: _tblInput(controller: row.pgcCtrl, readOnly: isSubmitted, hint: 'VARCHAR'))),
-        SizedBox(width: 120, child: Padding(padding: const EdgeInsets.all(5),
-            child: _tblInput(controller: row.shellCtrl, readOnly: isSubmitted, hint: 'VARCHAR'))),
-        SizedBox(width: 120, child: Padding(padding: const EdgeInsets.all(5),
-            child: _tblInput(controller: row.bagCtrl, readOnly: isSubmitted, hint: 'VARCHAR'))),
-        SizedBox(width: 36, child: Center(child: canDelete
+        // Inside Temp Before Charging - responsive
+        Expanded(
+          flex: 3,
+          child: Padding(padding: const EdgeInsets.all(5),
+              child: _tblInput(controller: row.insideCtrl, readOnly: isSubmitted,
+                  hint: '°C', numeric: true)),
+        ),
+
+        // Process Gas Chamber - responsive
+        Expanded(
+          flex: 2,
+          child: Padding(padding: const EdgeInsets.all(5),
+              child: _tblInput(controller: row.pgcCtrl, readOnly: isSubmitted, hint: 'Text')),
+        ),
+
+        // Shell - responsive
+        Expanded(
+          flex: 2,
+          child: Padding(padding: const EdgeInsets.all(5),
+              child: _tblInput(controller: row.shellCtrl, readOnly: isSubmitted, hint: 'Text')),
+        ),
+
+        // Bag House - responsive
+        Expanded(
+          flex: 2,
+          child: Padding(padding: const EdgeInsets.all(5),
+              child: _tblInput(controller: row.bagCtrl, readOnly: isSubmitted, hint: 'Text')),
+        ),
+
+        // Delete button - fixed width
+        SizedBox(width: 40, child: Center(child: canDelete
             ? _delBtn(onRemove!) : const SizedBox.shrink())),
       ]),
     );

@@ -83,7 +83,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     ));
 
     try {
-      // await SyncService().downloadMasterData();
+      await SyncService().downloadMasterData();
       if (!mounted) return;
       ScaffoldMessenger.of(context).hideCurrentSnackBar();
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
