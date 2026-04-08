@@ -340,6 +340,285 @@ class MesPageHeader extends StatelessWidget {
   }
 }
 
+// ============================================================
+// SEARCHABLE DROPDOWN - Reusable Widget
+// ============================================================
+
+/// A searchable dropdown that opens a modal with search functionality
+class SearchableDropdown<T> extends StatelessWidget {
+  final T? value;
+  final List<T> items;
+  final String Function(T) displayString;
+  final String hint;
+  final bool enabled;
+  final ValueChanged<T?> onChanged;
+
+  const SearchableDropdown({
+    super.key,
+    required this.value,
+    required this.items,
+    required this.displayString,
+    required this.onChanged,
+    this.hint = 'Select…',
+    this.enabled = true,
+  });
+
+  String get _selectedName => value != null
+      ? displayString(value!)
+      : '';
+
+  Future<void> _open(BuildContext context) async {
+    if (!enabled) return;
+
+    // Unfocus to hide keyboard
+    FocusScope.of(context).unfocus();
+
+    final result = await showModalBottomSheet<T>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => SearchableDropdownModal<T>(
+        items: items,
+        selectedValue: value,
+        displayString: displayString,
+      ),
+    );
+    if (result != null && result != value) {
+      onChanged(result);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final hasValue = _selectedName.isNotEmpty;
+    return GestureDetector(
+      onTap: enabled ? () => _open(context) : null,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+        decoration: BoxDecoration(
+          color: enabled ? AppColors.greenXLight : const Color(0xFFF0F4F2),
+          border: Border.all(color: AppColors.border, width: 1.5),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(children: [
+          Expanded(
+            child: Text(
+              hasValue ? _selectedName : hint,
+              style: GoogleFonts.outfit(
+                fontSize: 13,
+                color: hasValue ? AppColors.textDark : AppColors.textMuted,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          if (enabled)
+            const Icon(Icons.search, size: 16, color: AppColors.textMuted),
+        ]),
+      ),
+    );
+  }
+}
+
+/// Modal for searchable dropdown
+class SearchableDropdownModal<T> extends StatefulWidget {
+  final List<T> items;
+  final T? selectedValue;
+  final String Function(T) displayString;
+
+  const SearchableDropdownModal({
+    super.key,
+    required this.items,
+    required this.selectedValue,
+    required this.displayString,
+  });
+
+  @override
+  State<SearchableDropdownModal<T>> createState() => _SearchableDropdownModalState<T>();
+}
+
+class _SearchableDropdownModalState<T> extends State<SearchableDropdownModal<T>> {
+  final _searchCtrl = TextEditingController();
+  late List<T> _filtered;
+
+  @override
+  void initState() {
+    super.initState();
+    _filtered = widget.items;
+    _searchCtrl.addListener(_onSearch);
+  }
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
+  void _onSearch() {
+    final q = _searchCtrl.text.toLowerCase().trim();
+    setState(() {
+      _filtered = q.isEmpty
+          ? widget.items
+          : widget.items
+          .where((item) => widget.displayString(item).toLowerCase().contains(q))
+          .toList();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      resizeToAvoidBottomInset: true,
+      body: DraggableScrollableSheet(
+        initialChildSize: 0.6,
+        maxChildSize: 0.88,
+        minChildSize: 0.4,
+        builder: (ctx, scrollCtrl) => Container(
+          decoration: const BoxDecoration(
+            color: AppColors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+          ),
+          child: Column(children: [
+            // Handle
+            Center(
+              child: Container(
+                margin: const EdgeInsets.only(top: 10),
+                width: 36,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.border,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            // Header
+            Container(
+              padding: const EdgeInsets.fromLTRB(20, 14, 20, 14),
+              decoration: const BoxDecoration(
+                color: AppColors.greenLight,
+                border: Border(bottom: BorderSide(color: AppColors.border)),
+              ),
+              child: Row(children: [
+                const Icon(Icons.search, size: 16, color: AppColors.green),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text('Select Item',
+                      style: AppTextStyles.subheading(color: AppColors.green)),
+                ),
+                GestureDetector(
+                  onTap: () => Navigator.of(context).pop(),
+                  child: const Icon(Icons.close, size: 18, color: AppColors.textMuted),
+                ),
+              ]),
+            ),
+            // Search field
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
+              child: TextField(
+                controller: _searchCtrl,
+                autofocus: false,
+                style: GoogleFonts.outfit(fontSize: 13, color: AppColors.textDark),
+                decoration: InputDecoration(
+                  hintText: 'Search...',
+                  hintStyle: GoogleFonts.outfit(fontSize: 13, color: AppColors.textMuted),
+                  prefixIcon: const Icon(Icons.search, size: 18, color: AppColors.textMuted),
+                  suffixIcon: _searchCtrl.text.isNotEmpty
+                      ? GestureDetector(
+                    onTap: () => _searchCtrl.clear(),
+                    child: const Icon(Icons.clear, size: 16, color: AppColors.textMuted),
+                  )
+                      : null,
+                  isDense: true,
+                  filled: true,
+                  fillColor: AppColors.greenXLight,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(9),
+                    borderSide: const BorderSide(color: AppColors.border, width: 1.5),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(9),
+                    borderSide: const BorderSide(color: AppColors.border, width: 1.5),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(9),
+                    borderSide: const BorderSide(color: AppColors.green, width: 1.5),
+                  ),
+                ),
+              ),
+            ),
+            // Results count
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 2),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text('${_filtered.length} result(s)',
+                    style: AppTextStyles.caption()),
+              ),
+            ),
+            // List
+            Expanded(
+              child: _filtered.isEmpty
+                  ? Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.search_off_outlined,
+                        size: 40, color: AppColors.borderLight),
+                    const SizedBox(height: 8),
+                    Text('No items match your search.',
+                        style: AppTextStyles.caption()),
+                  ],
+                ),
+              )
+                  : ListView.separated(
+                controller: scrollCtrl,
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                physics: const AlwaysScrollableScrollPhysics(),
+                keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                itemCount: _filtered.length,
+                separatorBuilder: (_, __) =>
+                const Divider(height: 1, color: AppColors.borderLight),
+                itemBuilder: (_, i) {
+                  final item = _filtered[i];
+                  final isSelected = item == widget.selectedValue;
+                  return InkWell(
+                    onTap: () => Navigator.of(context).pop(item),
+                    child: Container(
+                      color: isSelected
+                          ? AppColors.greenXLight : Colors.transparent,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 20, vertical: 12),
+                      child: Row(children: [
+                        Expanded(
+                          child: Text(
+                            widget.displayString(item),
+                            style: GoogleFonts.outfit(
+                              fontSize: 13,
+                              fontWeight: isSelected
+                                  ? FontWeight.w700 : FontWeight.w400,
+                              color: isSelected
+                                  ? AppColors.green : AppColors.textDark,
+                            ),
+                          ),
+                        ),
+                        if (isSelected)
+                          const Icon(Icons.check_circle,
+                              size: 16, color: AppColors.green),
+                      ]),
+                    ),
+                  );
+                },
+              ),
+            ),
+            SizedBox(height: MediaQuery.of(context).viewInsets.bottom > 0 ? 10 : 0),
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
 // ─────────────────────────────────────────────
 // Responsive helpers
 // ─────────────────────────────────────────────

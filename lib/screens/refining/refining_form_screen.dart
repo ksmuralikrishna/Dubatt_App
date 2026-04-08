@@ -1037,6 +1037,7 @@ class _OutputRow {
 // ─────────────────────────────────────────────
 // Searchable dropdown for header material
 // ─────────────────────────────────────────────
+// Replace the entire _SearchableDropField class with this:
 class _SearchableDropField extends StatelessWidget {
   final String label;
   final String? value;
@@ -1045,38 +1046,33 @@ class _SearchableDropField extends StatelessWidget {
   final ValueChanged<String?> onChanged;
 
   const _SearchableDropField({
-    required this.label, required this.value, required this.items,
-    required this.enabled, required this.onChanged,
+    required this.label,
+    required this.value,
+    required this.items,
+    required this.enabled,
+    required this.onChanged,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text(label.toUpperCase(), style: AppTextStyles.label()),
-      const SizedBox(height: 5),
-      DropdownButtonFormField<String>(
-        value: value?.isNotEmpty == true ? value : null,
-        isDense: true,
-        hint: Text('Select material…',
-            style: GoogleFonts.outfit(fontSize: 13, color: AppColors.textMuted)),
-        decoration: InputDecoration(
-          isDense: true, filled: true, fillColor: AppColors.greenXLight,
-          contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(9),
-              borderSide: const BorderSide(color: AppColors.border, width: 1.5)),
-          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(9),
-              borderSide: const BorderSide(color: AppColors.border, width: 1.5)),
-          focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(9),
-              borderSide: const BorderSide(color: AppColors.green, width: 1.5)),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label.toUpperCase(), style: AppTextStyles.label()),
+        const SizedBox(height: 5),
+        SearchableDropdown<String>(
+          value: value?.isNotEmpty == true ? value : null,
+          items: items.map((m) => m.id).toList(),
+          displayString: (id) => items.firstWhere(
+                (m) => m.id == id,
+            orElse: () => RefiningMaterialOption(id: '', name: '—'),
+          ).name,
+          hint: 'Select material…',
+          enabled: enabled,
+          onChanged: onChanged,
         ),
-        items: items.map((m) => DropdownMenuItem(
-          value: m.id,
-          child: Text(m.name, style: GoogleFonts.outfit(fontSize: 13),
-              overflow: TextOverflow.ellipsis),
-        )).toList(),
-        onChanged: enabled ? onChanged : null,
-      ),
-    ]);
+      ],
+    );
   }
 }
 
@@ -1171,17 +1167,14 @@ class _InputTblRowState extends State<_InputTblRow> {
           child: widget.isSubmitted
               ? _roCell(_mats.firstWhere((m) => m.id == _matId,
               orElse: () => RefiningMaterialOption(id: '', name: '—')).name, 170)
-              : DropdownButtonFormField<String>(
+              : SearchableDropdown<String>(
             value: _matId.isNotEmpty ? _matId : null,
-            isDense: true,
-            hint: Text('Select…', style: GoogleFonts.outfit(fontSize: 12,
-                color: AppColors.textMuted)),
-            decoration: _dropDec(),
-            items: _mats.map((m) => DropdownMenuItem(
-              value: m.id,
-              child: Text(m.name, style: GoogleFonts.outfit(fontSize: 12),
-                  overflow: TextOverflow.ellipsis),
-            )).toList(),
+            items: _mats.map((m) => m.id).toList(),
+            displayString: (id) => _mats.firstWhere(
+                  (m) => m.id == id,
+              orElse: () => RefiningMaterialOption(id: '', name: '—'),
+            ).name,
+            hint: 'Select…',
             onChanged: (v) {
               setState(() => _matId = v ?? '');
               widget.onRecalc();
@@ -1597,15 +1590,11 @@ class _ProcTblRowState extends State<_ProcTblRow> {
         SizedBox(width: 180, child: Padding(padding: const EdgeInsets.all(5),
           child: ro
               ? _roCell(row.processName, 170)
-              : DropdownButtonFormField<String>(
+              : SearchableDropdown<String>(
             value: row.processName.isNotEmpty ? row.processName : null,
-            isDense: true,
-            hint: Text('Select process…', style: GoogleFonts.outfit(fontSize: 12,
-                color: AppColors.textMuted)),
-            decoration: _dropDec(),
-            items: widget.processNames.map((n) => DropdownMenuItem(
-              value: n, child: Text(n, style: GoogleFonts.outfit(fontSize: 12)),
-            )).toList(),
+            items: widget.processNames,
+            displayString: (item) => item,
+            hint: 'Select process…',
             onChanged: (v) => setState(() => row.processName = v ?? ''),
           ),
         )),
@@ -1708,20 +1697,17 @@ class _OutputTblRowState extends State<_OutputTblRow> {
           child: widget.isSubmitted
               ? _roCell(row.materials.firstWhere((m) => m.id == row.materialId,
               orElse: () => RefiningMaterialOption(id: '', name: '—')).name, 170)
-              : DropdownButtonFormField<String>(
+              : SearchableDropdown<String>(
             value: row.materialId.isNotEmpty ? row.materialId : null,
-            isDense: true,
-            hint: Text('Select…', style: GoogleFonts.outfit(fontSize: 12,
-                color: AppColors.textMuted)),
-            decoration: _dropDec(),
-            items: row.materials.map((m) => DropdownMenuItem(
-              value: m.id,
-              child: Text(m.name, style: GoogleFonts.outfit(fontSize: 12),
-                  overflow: TextOverflow.ellipsis),
-            )).toList(),
+            items: row.materials.map((m) => m.id).toList(),
+            displayString: (id) => row.materials.firstWhere(
+                  (m) => m.id == id,
+              orElse: () => RefiningMaterialOption(id: '', name: '—'),
+            ).name,
+            hint: 'Select…',
             onChanged: (v) {
               setState(() {
-                row.materialId   = v ?? '';
+                row.materialId = v ?? '';
                 row.outputBlocks = [];
                 row.qtyCtrl.text = '';
               });

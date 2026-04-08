@@ -393,45 +393,42 @@ class _ReceivingFormScreenState extends State<ReceivingFormScreen> {
                         ),
                       ),
                       const SizedBox(height: 16),
-                      DropdownButtonFormField<String>(
-                        value: _selectedSupplier,
-                        items: _suppliers
-                            .map((s) => DropdownMenuItem(
-                          value: s.id,
-                          child: Text(s.name),
-                        ))
-                            .toList(),
-                        onChanged: (v) =>
-                            setState(() => _selectedSupplier = v),
-                        decoration: InputDecoration(
-                          labelText: 'Supplier',
-                          prefixIcon:
-                          const Icon(Icons.person_outline),
-                          border: OutlineInputBorder(
-                              borderRadius:
-                              BorderRadius.circular(9)),
-                        ),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('SUPPLIER', style: AppTextStyles.label()),
+                          const SizedBox(height: 5),
+                          SearchableDropdown<String>(
+                            value: _selectedSupplier,
+                            items: _suppliers.map((s) => s.id).toList(),
+                            displayString: (id) => _suppliers.firstWhere(
+                                  (s) => s.id == id,
+                              orElse: () => SupplierOption(id: '', name: '—'),
+                            ).name,
+                            hint: 'Select supplier…',
+                            enabled: true,
+                            onChanged: (v) => setState(() => _selectedSupplier = v),
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 16),
-                      DropdownButtonFormField<String>(
-                        value: _selectedMaterial,
-                        hint: const Text('Select Material'),
-                        items: _materials
-                            .map((m) => DropdownMenuItem(
-                          value: m.id,
-                          child: Text(m.name),
-                        ))
-                            .toList(),
-                        onChanged: (v) =>
-                            setState(() => _selectedMaterial = v),
-                        decoration: InputDecoration(
-                          labelText: 'Material',
-                          prefixIcon: const Icon(
-                              Icons.inventory_2_outlined),
-                          border: OutlineInputBorder(
-                              borderRadius:
-                              BorderRadius.circular(9)),
-                        ),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('MATERIAL', style: AppTextStyles.label()),
+                          const SizedBox(height: 5),
+                          SearchableDropdown<String>(
+                            value: _selectedMaterial,
+                            items: _materials.map((m) => m.id).toList(),
+                            displayString: (id) => _materials.firstWhere(
+                                  (m) => m.id == id,
+                              orElse: () => MaterialOption(id: '', name: '—'),
+                            ).name,
+                            hint: 'Select material…',
+                            enabled: true,
+                            onChanged: (v) => setState(() => _selectedMaterial = v),
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 16),
                       MesTextField(

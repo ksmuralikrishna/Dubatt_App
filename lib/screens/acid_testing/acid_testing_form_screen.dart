@@ -696,14 +696,29 @@ class _AcidTestingFormScreenState
                         ),
                         const SizedBox(width: 16),
                         Expanded(
-                          child: _LotDropdown(
-                            lots:       _lots,
-                            selected:   _selectedLot,
-                            readOnly:   _isSubmitted,
-                            onSelected: _onLotSelected,
-                            searchQuery: _lotSearchQuery,
-                            onSearch: (q) => setState(
-                                    () => _lotSearchQuery = q),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('LOT NO *', style: AppTextStyles.label()),
+                              const SizedBox(height: 5),
+                              SearchableDropdown<LotOption>(
+                                value: _selectedLot,
+                                items: _lots,
+                                displayString: (lot) => lot.lotNo,
+                                hint: 'Select a lot…',
+                                enabled: !_isSubmitted,
+                                onChanged: (lot) => _onLotSelected(lot),
+                              ),
+                              if (_selectedLot != null) ...[
+                                const SizedBox(height: 4),
+                                Text(
+                                  '${_selectedLot!.supplierName}'
+                                      '${_selectedLot!.receivedQty != null ? ' · ${_selectedLot!.receivedQty!.toStringAsFixed(0)} KG' : ''}',
+                                  style: AppTextStyles.caption(),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
+                            ],
                           ),
                         ),
                       ],

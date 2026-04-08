@@ -923,19 +923,23 @@ class _SmeltingFormScreenState extends State<SmeltingFormScreen> {
                     title: 'Output Window',
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       Row(children: [
-                        Expanded(child: _DropField(
-                          label: 'Material',
-                          value: _outputMaterialId?.isNotEmpty == true
-                              ? _outputMaterialId : null,
-                          hint: 'Select material…',
-                          items: _materials.map((m) => DropdownMenuItem(
-                            value: m.id,
-                            child: Text(m.name,
-                                style: GoogleFonts.outfit(fontSize: 13)),
-                          )).toList(),
-                          enabled: !_isSubmitted,
-                          onChanged: (v) => setState(() => _outputMaterialId = v),
-                        )),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('MATERIAL', style: AppTextStyles.label()),
+                              const SizedBox(height: 5),
+                              _SearchableDropdown(
+                                value: _outputMaterialId?.isNotEmpty == true
+                                    ? _outputMaterialId : null,
+                                materials: _materials,
+                                hint: 'Select material…',
+                                enabled: !_isSubmitted,
+                                onChanged: (v) => setState(() => _outputMaterialId = v),
+                              ),
+                            ],
+                          ),
+                        ),
                       ]),
                       const SizedBox(height: 14),
                       // Tappable block summary chip
@@ -1545,17 +1549,9 @@ class _RawTblRowState extends State<_RawTblRow> {
         SizedBox(width: w2, child: Padding(padding: const EdgeInsets.all(5),
           child: widget.isSubmitted
               ? _roCell(row.materialName, w2 - 10)
-              : DropdownButtonFormField<String>(
+              : _SearchableDropdown(
             value: row.materialId.isNotEmpty ? row.materialId : null,
-            isDense: true,
-            hint: Text('Select…', style: GoogleFonts.outfit(fontSize: 12,
-                color: AppColors.textMuted)),
-            decoration: _dropDec(),
-            items: widget.materials.map((m) => DropdownMenuItem(
-              value: m.id,
-              child: Text(m.name, style: GoogleFonts.outfit(fontSize: 12),
-                  overflow: TextOverflow.ellipsis),
-            )).toList(),
+            materials: widget.materials,
             onChanged: (v) {
               setState(() => row.materialId = v ?? '');
               widget.onRecalc();
@@ -1645,17 +1641,9 @@ class _FluxTblRowState extends State<_FluxTblRow> {
         SizedBox(width: w2, child: Padding(padding: const EdgeInsets.all(5),
           child: widget.isSubmitted
               ? _roCell(row.materialName, w2 - 10)
-              : DropdownButtonFormField<String>(
+              : _SearchableDropdown(
             value: row.materialId.isNotEmpty ? row.materialId : null,
-            isDense: true,
-            hint: Text('Select…', style: GoogleFonts.outfit(fontSize: 12,
-                color: AppColors.textMuted)),
-            decoration: _dropDec(),
-            items: widget.materials.map((m) => DropdownMenuItem(
-              value: m.id,
-              child: Text(m.name, style: GoogleFonts.outfit(fontSize: 12),
-                  overflow: TextOverflow.ellipsis),
-            )).toList(),
+            materials: widget.materials,
             onChanged: (v) {
               setState(() => row.materialId = v ?? '');
               widget.onRecalc();
@@ -2657,6 +2645,264 @@ class _OutputBlockModalState extends State<_OutputBlockModal> {
           style: AppTextStyles.label(color: AppColors.green)),
     ),
   );
+}
+// ─────────────────────────────────────────────
+// Searchable Dropdown (replaces DropdownButtonFormField)
+// ─────────────────────────────────────────────
+class _SearchableDropdown extends StatelessWidget {
+  final String? value;
+  final List<SmeltingMaterialOption> materials;
+  final String hint;
+  final bool enabled;
+  final ValueChanged<String?> onChanged;
+
+  const _SearchableDropdown({
+    required this.value,
+    required this.materials,
+    required this.onChanged,
+    this.hint = 'Select…',
+    this.enabled = true,
+  });
+
+  String get _selectedName => value != null && value!.isNotEmpty
+      ? materials.firstWhere((m) => m.id == value,
+      orElse: () => SmeltingMaterialOption(id: '', name: '—')).name
+      : '';
+
+  Future<void> _open(BuildContext context) async {
+    if (!enabled) return;
+    final result = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _SearchableDropdownModal(
+        materials: materials,
+        selectedId: value,
+      ),
+    );
+    if (result != null) onChanged(result);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final hasValue = _selectedName.isNotEmpty;
+    return GestureDetector(
+      onTap: enabled ? () => _open(context) : null,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+        decoration: BoxDecoration(
+          color: enabled ? AppColors.greenXLight : const Color(0xFFF0F4F2),
+          border: Border.all(color: AppColors.border, width: 1.5),
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Row(children: [
+          Expanded(
+            child: Text(
+              hasValue ? _selectedName : hint,
+              style: GoogleFonts.outfit(
+                fontSize: 12,
+                color: hasValue ? AppColors.textDark : AppColors.textMuted,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          if (enabled)
+            const Icon(Icons.search, size: 14, color: AppColors.textMuted),
+        ]),
+      ),
+    );
+  }
+}
+
+class _SearchableDropdownModal extends StatefulWidget {
+  final List<SmeltingMaterialOption> materials;
+  final String? selectedId;
+
+  const _SearchableDropdownModal({
+    required this.materials,
+    required this.selectedId,
+  });
+
+  @override
+  State<_SearchableDropdownModal> createState() => _SearchableDropdownModalState();
+}
+
+class _SearchableDropdownModalState extends State<_SearchableDropdownModal> {
+  final _searchCtrl = TextEditingController();
+  late List<SmeltingMaterialOption> _filtered;
+
+  @override
+  void initState() {
+    super.initState();
+    _filtered = widget.materials;
+    _searchCtrl.addListener(_onSearch);
+  }
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
+  void _onSearch() {
+    final q = _searchCtrl.text.toLowerCase().trim();
+    setState(() {
+      _filtered = q.isEmpty
+          ? widget.materials
+          : widget.materials
+          .where((m) => m.name.toLowerCase().contains(q))
+          .toList();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Wrap with Scaffold to handle keyboard insets
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      resizeToAvoidBottomInset: true, // This is key - resizes when keyboard opens
+      body: DraggableScrollableSheet(
+        initialChildSize: 0.6,
+        maxChildSize: 0.88,
+        minChildSize: 0.4,
+        builder: (ctx, scrollCtrl) => Container(
+          decoration: const BoxDecoration(
+            color: AppColors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+          ),
+          child: Column(children: [
+            // Handle
+            Center(
+              child: Container(
+                margin: const EdgeInsets.only(top: 10),
+                width: 36, height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.border,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            // Header
+            Container(
+              padding: const EdgeInsets.fromLTRB(20, 14, 20, 14),
+              decoration: const BoxDecoration(
+                color: AppColors.greenLight,
+                border: Border(bottom: BorderSide(color: AppColors.border)),
+              ),
+              child: Row(children: [
+                const Icon(Icons.search, size: 16, color: AppColors.green),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text('Select Material',
+                      style: AppTextStyles.subheading(color: AppColors.green)),
+                ),
+                GestureDetector(
+                  onTap: () => Navigator.of(context).pop(),
+                  child: const Icon(Icons.close, size: 18, color: AppColors.textMuted),
+                ),
+              ]),
+            ),
+            // Search field
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
+              child: TextField(
+                controller: _searchCtrl,
+                autofocus: true,
+                style: GoogleFonts.outfit(fontSize: 13, color: AppColors.textDark),
+                decoration: InputDecoration(
+                  hintText: 'Search materials…',
+                  hintStyle: GoogleFonts.outfit(fontSize: 13, color: AppColors.textMuted),
+                  prefixIcon: const Icon(Icons.search, size: 18, color: AppColors.textMuted),
+                  suffixIcon: _searchCtrl.text.isNotEmpty
+                      ? GestureDetector(
+                    onTap: () => _searchCtrl.clear(),
+                    child: const Icon(Icons.clear, size: 16, color: AppColors.textMuted),
+                  )
+                      : null,
+                  isDense: true, filled: true, fillColor: AppColors.greenXLight,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(9),
+                      borderSide: const BorderSide(color: AppColors.border, width: 1.5)),
+                  enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(9),
+                      borderSide: const BorderSide(color: AppColors.border, width: 1.5)),
+                  focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(9),
+                      borderSide: const BorderSide(color: AppColors.green, width: 1.5)),
+                ),
+              ),
+            ),
+            // Results count
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 2),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text('${_filtered.length} result(s)',
+                    style: AppTextStyles.caption()),
+              ),
+            ),
+            // List - use Expanded with keyboard handling
+            Expanded(
+              child: _filtered.isEmpty
+                  ? Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.search_off_outlined,
+                        size: 40, color: AppColors.borderLight),
+                    const SizedBox(height: 8),
+                    Text('No materials match your search.',
+                        style: AppTextStyles.caption()),
+                  ],
+                ),
+              )
+                  : ListView.separated(
+                controller: scrollCtrl,
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                // Add bottom padding to ensure last items are scrollable above keyboard
+                physics: const AlwaysScrollableScrollPhysics(),
+                keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                itemCount: _filtered.length,
+                separatorBuilder: (_, __) =>
+                const Divider(height: 1, color: AppColors.borderLight),
+                itemBuilder: (_, i) {
+                  final m = _filtered[i];
+                  final isSelected = m.id == widget.selectedId;
+                  return InkWell(
+                    onTap: () => Navigator.of(context).pop(m.id),
+                    child: Container(
+                      color: isSelected
+                          ? AppColors.greenXLight : Colors.transparent,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 20, vertical: 12),
+                      child: Row(children: [
+                        Expanded(
+                          child: Text(m.name,
+                              style: GoogleFonts.outfit(
+                                fontSize: 13,
+                                fontWeight: isSelected
+                                    ? FontWeight.w700 : FontWeight.w400,
+                                color: isSelected
+                                    ? AppColors.green : AppColors.textDark,
+                              )),
+                        ),
+                        if (isSelected)
+                          const Icon(Icons.check_circle,
+                              size: 16, color: AppColors.green),
+                      ]),
+                    ),
+                  );
+                },
+              ),
+            ),
+            // Add a small bottom spacer for keyboard
+            SizedBox(height: MediaQuery.of(context).viewInsets.bottom > 0 ? 10 : 0),
+          ]),
+        ),
+      ),
+    );
+  }
 }
 // ─────────────────────────────────────────────
 // File-level table helpers

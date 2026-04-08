@@ -849,16 +849,16 @@ class _InputTableRowState extends State<_InputTableRow> {
         SizedBox(width: 200, child: Padding(padding: const EdgeInsets.all(5),
           child: widget.isSubmitted
               ? _roCell(row.selectedLotNo)
-              : DropdownButtonFormField<String>(
+              : SearchableDropdown<String>(
             value: row.selectedLotNo.isNotEmpty ? row.selectedLotNo : null,
-            isDense: true,
-            hint: Text('Select lot…', style: GoogleFonts.outfit(fontSize: 12, color: AppColors.textMuted)),
-            decoration: _dropDec(),
-            items: widget.lots.map((l) => DropdownMenuItem(
-              value: l.lotNumber,
-              child: Text(l.lotNumber, style: GoogleFonts.outfit(fontSize: 12.5)),
-            )).toList(),
-            onChanged: (v) { setState(() => row.selectedLotNo = v ?? ''); widget.onChanged(); },
+            items: widget.lots.map((l) => l.lotNumber).toList(),
+            displayString: (item) => item,
+            hint: 'Select lot…',
+            enabled: !widget.isSubmitted,
+            onChanged: (v) {
+              setState(() => row.selectedLotNo = v ?? '');
+              widget.onChanged();
+            },
           ),
         )),
 
