@@ -58,21 +58,27 @@ class SyncService {
     await bbsu.preloadAcidSummariesForLots(
       bbsuLots.map((l) => l.lotNumber).toList(),
     );
+    // await bbsu.preloadAcidSummariesForLots();
 
     // Smelting: materials + BBSU stock per material
     final smelting = SmeltingService();
-    final smeltMaterials = await smelting.getMaterials(); // caches smelting_material_cache
-    await smelting.preloadBbsuLotsForMaterials(
-      smeltMaterials.map((m) => m.id).toList(),
-    );
+    // final smeltMaterials = await smelting.getMaterials(); // caches smelting_material_cache
+    await smelting.preloadBbsuLotsForMaterials();
+    // await smelting.preloadBbsuLotsForMaterials(
+    //   smeltMaterials.map((m) => m.id).toList(),
+    // );
+    await smelting.preloadBbsuLotsForMaterials();
+    await smelting.getMaterials();
 
     // Refining: materials + process names + smelting stock per material
     final refining = RefiningService();
-    final refMaterials = await refining.getMaterials(); // caches refining_material_cache
+    // final refMaterials = await refining.getMaterials(); // caches refining_material_cache
     await refining.getProcessNames();                   // caches refining_process_name_cache
-    await refining.preloadSmeltingLotsForMaterials(
-      refMaterials.map((m) => m.id).toList(),
-    );
+    // await refining.preloadSmeltingLotsForMaterials(
+    //   refMaterials.map((m) => m.id).toList(),
+    // );
+    await refining.preloadSmeltingLotsForMaterials();
+    await refining.getMaterials();
   }
 
   Future<void> syncAll() async {

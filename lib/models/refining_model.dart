@@ -33,6 +33,7 @@ class RefiningMaterialOption {
 // Cached per materialId in refining_smelting_lot_cache
 // ─────────────────────────────────────────────
 class RefiningSmeltingLot {
+  final int materialId;
   final String smeltingBatchId;
   final String batchNo;
   final String secondaryName; // material description
@@ -40,6 +41,7 @@ class RefiningSmeltingLot {
   final double availableQty;
 
   const RefiningSmeltingLot({
+    required this.materialId,
     required this.smeltingBatchId,
     required this.batchNo,
     required this.secondaryName,
@@ -49,6 +51,7 @@ class RefiningSmeltingLot {
 
   factory RefiningSmeltingLot.fromJson(Map<String, dynamic> json) {
     return RefiningSmeltingLot(
+      materialId:  (json['material_id'] as num?)?.toInt() ?? 0,
       smeltingBatchId: json['smelting_batch_id']?.toString() ?? '',
       batchNo:         json['batch_no']?.toString() ?? '',
       secondaryName:   json['secondary_name']?.toString()

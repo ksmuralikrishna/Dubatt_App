@@ -360,7 +360,7 @@ class _OfflineBanner extends StatelessWidget {
 // Column widths
 // Batch No | Pot No | Material | Date | LPG | Elec | Status | Actions
 // ─────────────────────────────────────────────
-const double _tBatch   = 130.0;
+const double _tBatch   = 180.0;
 const double _tPot     = 100.0;
 const double _tMat     = 140.0;
 const double _tDate    = 100.0;

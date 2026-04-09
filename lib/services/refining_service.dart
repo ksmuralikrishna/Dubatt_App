@@ -122,26 +122,61 @@ class RefiningService {
 
   /// Preloads and caches smelting stock lots for all provided materialIds.
   /// This ensures refining stock modal works fully offline for any material.
-  Future<void> preloadSmeltingLotsForMaterials(
-    List<String> materialIds,
-  ) async {
-    if (!ConnectivityService().isOnline) return;
 
-    final uniqueIds = materialIds
-        .map((e) => e.trim())
-        .where((e) => e.isNotEmpty)
-        .toSet()
-        .toList();
+  // Future<void> preloadSmeltingLotsForMaterials(
+  //   List<String> materialIds,
+  // ) async {
+  //   if (!ConnectivityService().isOnline) return;
+  //
+  //   final uniqueIds = materialIds
+  //       .map((e) => e.trim())
+  //       .where((e) => e.isNotEmpty)
+  //       .toSet()
+  //       .toList();
+  //
+  //   for (final materialId in uniqueIds) {
+  //     try {
+  //       // excludeRefiningId intentionally not used for shared offline cache.
+  //       await getSmeltingLots(materialId);
+  //     } catch (_) {
+  //       // Ignore per-material failures and continue preloading others.
+  //     }
+  //   }
+  // }
 
-    for (final materialId in uniqueIds) {
-      try {
-        // excludeRefiningId intentionally not used for shared offline cache.
-        await getSmeltingLots(materialId);
-      } catch (_) {
-        // Ignore per-material failures and continue preloading others.
+  Future<void> preloadSmeltingLotsForMaterials() async {
+    if (!ConnectivityService().isOnline) {
+      return; // No internet → do nothing
+    }
+
+    try {
+      final res = await http
+          .get(
+        Uri.parse('$kBaseUrl/smelting-batches/bbsu-lots/all'),
+        headers: _headers,
+      )
+          .timeout(const Duration(seconds: 15));
+
+      if (res.statusCode == 200) {
+        final body = jsonDecode(res.body);
+        final list = (body['data'] ?? []) as List;
+
+        final lots = list
+            .map((j) => RefiningSmeltingLot.fromJson(j))
+            .toList();
+
+        await LocalDbService().cacheAllRefiningSmeltingLots(lots);
       }
+    } catch (e) {
+      // optional: log error
     }
   }
+
+
+
+
+
+
 
   // ── Generate batch no ───────────────────────────────────────────────────────
   Future<String> generateBatchNo() async {

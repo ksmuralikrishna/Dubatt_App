@@ -94,29 +94,65 @@ class SmeltingService {
     }
   }
 
+
+
+
+
+  Future<void> preloadBbsuLotsForMaterials() async {
+    if (!ConnectivityService().isOnline) {
+      return; // No internet → do nothing
+    }
+
+    try {
+      final res = await http
+          .get(
+        Uri.parse('$kBaseUrl/smelting-batches/bbsu-lots/all'),
+        headers: _headers,
+      )
+          .timeout(const Duration(seconds: 15));
+
+      if (res.statusCode == 200) {
+        final body = jsonDecode(res.body);
+        final list = (body['data'] ?? []) as List;
+
+        final lots = list
+            .map((j) => SmeltingBbsuLot.fromJson(j))
+            .toList();
+
+        await LocalDbService().cacheAllSmeltingBbsuLots(lots);
+      }
+    } catch (e) {
+      // optional: log error
+    }
+  }
+
+
+
+
+
   /// Preloads and caches BBSU stock lots for all given materialIds.
   /// This makes the stock modal usable offline for any material, not only the
   /// ones that were previously opened.
-  Future<void> preloadBbsuLotsForMaterials(
-    List<String> materialIds,
-  ) async {
-    if (!ConnectivityService().isOnline) return;
-
-    final uniqueIds = materialIds
-        .map((e) => e.trim())
-        .where((e) => e.isNotEmpty)
-        .toSet()
-        .toList();
-
-    for (final materialId in uniqueIds) {
-      try {
-        // excludeSmeltingId intentionally not used here; we want a general cache.
-        await getBbsuLots(materialId);
-      } catch (_) {
-        // Ignore per-material failures; continue preloading others.
-      }
-    }
-  }
+  // Future<void> preloadBbsuLotsForMaterials(
+  //   List<String> materialIds,
+  // ) async {
+  //   if (!ConnectivityService().isOnline) return;
+  //
+  //   final uniqueIds = materialIds
+  //       .map((e) => e.trim())
+  //       .where((e) => e.isNotEmpty)
+  //       .toSet()
+  //       .toList();
+  //
+  //   for (final materialId in uniqueIds) {
+  //     try {
+  //       // excludeSmeltingId intentionally not used here; we want a general cache.
+  //       await getBbsuLots(materialId);
+  //     } catch (_) {
+  //       // Ignore per-material failures; continue preloading others.
+  //     }
+  //   }
+  // }
 
   // ── Generate batch no ───────────────────────────────────────────────────────
   // Offline fallback: SMLT-{year}-{4 digits}

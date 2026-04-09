@@ -153,26 +153,26 @@ class _SmeltingFormScreenState extends State<SmeltingFormScreen> {
     setState(() => _isLoading = false);
 
     // Preload stock for all materials for offline usage.
-    unawaited(_preloadAllStockForOffline());
+    // unawaited(_preloadAllStockForOffline());
   }
 
-  Future<void> _preloadAllStockForOffline() async {
-    if (!mounted || _isPreloadingStock) return;
-    if (!ConnectivityService().isOnline || _materials.isEmpty) return;
-
-    setState(() => _isPreloadingStock = true);
-    try {
-      await SmeltingService().preloadBbsuLotsForMaterials(
-        _materials.map((m) => m.id).toList(),
-      );
-    } finally {
-      if (mounted) {
-        setState(() => _isPreloadingStock = false);
-      } else {
-        _isPreloadingStock = false;
-      }
-    }
-  }
+  // Future<void> _preloadAllStockForOffline() async {
+  //   if (!mounted || _isPreloadingStock) return;
+  //   if (!ConnectivityService().isOnline || _materials.isEmpty) return;
+  //
+  //   setState(() => _isPreloadingStock = true);
+  //   try {
+  //     await SmeltingService().preloadBbsuLotsForMaterials(
+  //       _materials.map((m) => m.id).toList(),
+  //     );
+  //   } finally {
+  //     if (mounted) {
+  //       setState(() => _isPreloadingStock = false);
+  //     } else {
+  //       _isPreloadingStock = false;
+  //     }
+  //   }
+  // }
 
   Future<void> _loadRecord() async {
     final r = await SmeltingService().getOne(widget.recordId!);

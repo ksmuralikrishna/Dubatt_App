@@ -33,6 +33,7 @@ class SmeltingMaterialOption {
 // Cached per materialId in smelting_bbsu_lot_cache
 // ─────────────────────────────────────────────
 class SmeltingBbsuLot {
+  final int materialId;
   final String bbsuBatchId;
   final String batchNo;
   final String materialName;
@@ -40,6 +41,7 @@ class SmeltingBbsuLot {
   final double availableQty;
 
   const SmeltingBbsuLot({
+    required this.materialId,
     required this.bbsuBatchId,
     required this.batchNo,
     required this.materialName,
@@ -49,6 +51,7 @@ class SmeltingBbsuLot {
 
   factory SmeltingBbsuLot.fromJson(Map<String, dynamic> json) {
     return SmeltingBbsuLot(
+      materialId:  (json['material_id'] as num?)?.toInt() ?? 0,
       bbsuBatchId:  json['bbsu_batch_id']?.toString() ?? '',
       batchNo:      json['batch_no']?.toString() ?? '',
       materialName: json['material_name']?.toString() ?? '',

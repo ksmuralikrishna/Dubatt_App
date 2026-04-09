@@ -135,26 +135,26 @@ class _RefiningFormScreenState extends State<RefiningFormScreen> {
     setState(() => _isLoading = false);
 
     // Preload smelting stock for all materials to support full offline use.
-    unawaited(_preloadAllStockForOffline());
+    // unawaited(_preloadAllStockForOffline());
   }
 
-  Future<void> _preloadAllStockForOffline() async {
-    if (!mounted || _isPreloadingStock) return;
-    if (!ConnectivityService().isOnline || _materials.isEmpty) return;
-
-    setState(() => _isPreloadingStock = true);
-    try {
-      await RefiningService().preloadSmeltingLotsForMaterials(
-        _materials.map((m) => m.id).toList(),
-      );
-    } finally {
-      if (mounted) {
-        setState(() => _isPreloadingStock = false);
-      } else {
-        _isPreloadingStock = false;
-      }
-    }
-  }
+  // Future<void> _preloadAllStockForOffline() async {
+  //   if (!mounted || _isPreloadingStock) return;
+  //   if (!ConnectivityService().isOnline || _materials.isEmpty) return;
+  //
+  //   setState(() => _isPreloadingStock = true);
+  //   try {
+  //     await RefiningService().preloadSmeltingLotsForMaterials(
+  //       _materials.map((m) => m.id).toList(),
+  //     );
+  //   } finally {
+  //     if (mounted) {
+  //       setState(() => _isPreloadingStock = false);
+  //     } else {
+  //       _isPreloadingStock = false;
+  //     }
+  //   }
+  // }
 
   Future<void> _loadRecord() async {
     final r = await RefiningService().getOne(widget.recordId!);

@@ -851,6 +851,31 @@ class LocalDbService {
     await batch.commit(noResult: true);
   }
 
+  Future<void> cacheAllSmeltingBbsuLots(
+      List<SmeltingBbsuLot> lots) async {
+
+    final batch = db.batch();
+
+    // Full refresh → delete everything
+    batch.delete('smelting_bbsu_lot_cache');
+
+    final now = DateTime.now().toIso8601String();
+
+    for (final l in lots) {
+      batch.insert('smelting_bbsu_lot_cache', {
+        'material_id':   l.materialId,
+        'bbsu_batch_id': l.bbsuBatchId,
+        'batch_no':      l.batchNo,
+        'material_name': l.materialName,
+        'material_unit': l.materialUnit,
+        'available_qty': l.availableQty,
+        'cached_at':     now,
+      });
+    }
+
+    await batch.commit(noResult: true);
+  }
+
   Future<List<SmeltingBbsuLot>> getCachedSmeltingBbsuLots(
       String materialId) async {
     final rows = await db.query(
@@ -861,6 +886,7 @@ class LocalDbService {
     );
     return rows
         .map((r) => SmeltingBbsuLot(
+      materialId:  int.tryParse(r['material_id'].toString()) ?? 0,
       bbsuBatchId:  r['bbsu_batch_id'] as String,
       batchNo:      r['batch_no'] as String? ?? '',
       materialName: r['material_name'] as String? ?? '',
@@ -900,6 +926,8 @@ class LocalDbService {
     }
     await batch.commit(noResult: true);
   }
+
+
 
   Future<List<Map<String, dynamic>>> getAllRefiningForDisplay() async {
     return await db.query('refining_records', orderBy: 'created_at DESC');
@@ -990,6 +1018,32 @@ class LocalDbService {
     await batch.commit(noResult: true);
   }
 
+
+  Future<void> cacheAllRefiningSmeltingLots(
+      List<RefiningSmeltingLot> lots) async {
+
+    final batch = db.batch();
+
+    // Full refresh → clear entire table
+    batch.delete('refining_smelting_lot_cache');
+
+    final now = DateTime.now().toIso8601String();
+
+    for (final l in lots) {
+      batch.insert('refining_smelting_lot_cache', {
+        'material_id':       l.materialId,   // ← from model
+        'smelting_batch_id': l.smeltingBatchId,
+        'batch_no':          l.batchNo,
+        'secondary_name':    l.secondaryName,
+        'material_unit':     l.materialUnit,
+        'available_qty':     l.availableQty,
+        'cached_at':         now,
+      });
+    }
+
+    await batch.commit(noResult: true);
+  }
+
   Future<List<RefiningSmeltingLot>> getCachedRefiningSmeltingLots(
       String materialId) async {
     final rows = await db.query(
@@ -999,6 +1053,7 @@ class LocalDbService {
       orderBy: 'batch_no ASC',
     );
     return rows.map((r) => RefiningSmeltingLot(
+      materialId:  int.tryParse(r['material_id'].toString()) ?? 0, // ✅ ADD THIS
       smeltingBatchId: r['smelting_batch_id'] as String,
       batchNo:         r['batch_no'] as String? ?? '',
       secondaryName:   r['secondary_name'] as String? ?? '',
