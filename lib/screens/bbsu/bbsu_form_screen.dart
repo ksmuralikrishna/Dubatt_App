@@ -1110,7 +1110,9 @@ class _QtyModalState extends State<_QtyModal> {
       _usingFallback = false;
       for (int i = 0; i < widget.rows!.length; i++) {
         final row   = widget.rows![i];
-        final avail = _toDouble(row['net_weight']) ?? 0;
+        // final avail = _toDouble(row['available_qty']) ?? 0;
+        // final avail = (_toDouble(row['net_weight']) ?? 0) - (_toDouble(row['used_qty']) ?? 0);
+        final avail = (_toDouble(row['net_weight']) ?? 0);
         final acid  = _toDouble(row['avg_acid_pct']) ?? 0;
         final desc  = row['material_description']?.toString() ?? '—';
         _available.add(avail);

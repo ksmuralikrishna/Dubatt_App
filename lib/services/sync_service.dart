@@ -1,10 +1,10 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../services/auth_service.dart';
 import '../services/local_db_service.dart';
 import '../services/conflict_resolver.dart';
 import '../models/sync_queue_model.dart';
-import '../models/receiving_model.dart';
 import '../services/receiving_service.dart';
 import '../services/acid_testing_service.dart';
 import '../services/bbsu_service.dart';
@@ -27,8 +27,8 @@ class SyncService {
   final List<String> _errors = [];
   List<String> get errors => List.unmodifiable(_errors);
 
-  // Callback so UI can react
-  void Function(SyncState)? onStateChanged;
+  final _stateController = StreamController<SyncState>.broadcast();
+  Stream<SyncState> get stateStream => _stateController.stream;
 
   Map<String, String> get _headers => {
     'Content-Type': 'application/json',
@@ -49,7 +49,7 @@ class SyncService {
 
     // Acid testing: available lots + first page of list (for offline view)
     final acid = AcidTestingService();
-    final acidLots = await acid.getAvailableLots(); // caches acid_lot_cache
+    await acid.getAvailableLots(); // caches acid_lot_cache
     await acid.getList(page: 1, perPage: 50);       // caches acid_testing_records
 
     // BBSU: available lots + acid summary per lot (for qty modal offline)
@@ -63,12 +63,12 @@ class SyncService {
     // Smelting: materials + BBSU stock per material
     final smelting = SmeltingService();
     // final smeltMaterials = await smelting.getMaterials(); // caches smelting_material_cache
-    await smelting.preloadBbsuLotsForMaterials();
+    // await smelting.preloadBbsuLotsForMaterials();
     // await smelting.preloadBbsuLotsForMaterials(
     //   smeltMaterials.map((m) => m.id).toList(),
     // );
-    await smelting.preloadBbsuLotsForMaterials();
     await smelting.getMaterials();
+    await smelting.preloadBbsuLotsForMaterials();
 
     // Refining: materials + process names + smelting stock per material
     final refining = RefiningService();
@@ -192,6 +192,6 @@ class SyncService {
 
   void _setState(SyncState s) {
     _state = s;
-    onStateChanged?.call(s);
+    _stateController.add(s);
   }
 }

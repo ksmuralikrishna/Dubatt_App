@@ -13,7 +13,12 @@ import 'package:dubatt_app/services/sync_service.dart';
 
 class ReceivingListScreen extends StatefulWidget {
   final VoidCallback onLogout;
-  const ReceivingListScreen({super.key, required this.onLogout});
+  final bool embedInShell;
+  const ReceivingListScreen({
+    super.key,
+    required this.onLogout,
+    this.embedInShell = true,
+  });
 
   @override
   State<ReceivingListScreen> createState() => _ReceivingListScreenState();
@@ -23,6 +28,7 @@ class _ReceivingListScreenState extends State<ReceivingListScreen> {
   final _searchCtrl = TextEditingController();
   Timer? _debounce;
   StreamSubscription<bool>? _connectivitySub;
+  StreamSubscription<SyncState>? _syncSub;
 
   List<ReceivingSummary> _records = [];
   bool _isLoading  = true;
@@ -61,18 +67,21 @@ class _ReceivingListScreenState extends State<ReceivingListScreen> {
     _load();
 
     // Reload when device comes back online (shows cached → live data)
-    _connectivitySub = ConnectivityService().onlineStream.listen((online) {
-      if (online && mounted) _load(reset: true);
-    });
+    // _connectivitySub = ConnectivityService().onlineStream.listen((online) {
+    //   if (online && mounted) _load(reset: true);
+    // });
 
     // ✅ Reload after AppSyncManager finishes syncing offline records
-    SyncService().onStateChanged = (state) {
-      if (state == SyncState.idle && mounted) _load(reset: true);
-    };
+    _syncSub = SyncService().stateStream.listen((state) {
+      if ((state == SyncState.done || state == SyncState.idle) && mounted) {
+        _load(reset: true);
+      }
+    });
   }
 
   @override
   void dispose() {
+    _syncSub?.cancel();
     _debounce?.cancel();
     _connectivitySub?.cancel();
     _searchCtrl.dispose();
@@ -215,10 +224,7 @@ class _ReceivingListScreenState extends State<ReceivingListScreen> {
     final hPad     = Responsive.hPad(context);
     final isTablet = Responsive.isTablet(context);
 
-    return AppShell(
-      currentRoute: '/receiving',
-      onLogout: widget.onLogout,
-      child: Column(
+    final content = Column(
         children: [
           Expanded(
             child: SingleChildScrollView(
@@ -275,6 +281,7 @@ class _ReceivingListScreenState extends State<ReceivingListScreen> {
                       subtitle:
                       'Manage and track all incoming material lots',
                       actions: [
+                        MesRefreshButton(onPressed: () => _load(reset: true)), // 👈 add this
                         MesButton(
                           label: 'Create New',
                           icon: Icons.add,
@@ -368,7 +375,13 @@ class _ReceivingListScreenState extends State<ReceivingListScreen> {
             ),
           ),
         ],
-      ),
+      );
+
+    if (!widget.embedInShell) return content;
+    return AppShell(
+      currentRoute: '/receiving',
+      onLogout: widget.onLogout,
+      child: content,
     );
   }
 
@@ -501,12 +514,12 @@ const double _tSupplier = 160.0;
 const double _tQty      = 110.0;
 const double _tUnit     = 70.0;
 const double _tStatus   = 120.0;
-const double _tActions  = 96.0; // ✅ widened: edit + delete side by side
+const double _tActions  = 150.0; // ✅ widened: edit + delete side by side
 
 const double _mLotNo    = 140.0;
 const double _mDate     = 110.0;
 const double _mStatus   = 120.0;
-const double _mActions  = 96.0; // ✅ widened
+const double _mActions  = 130.0; // ✅ widened
 
 // ─────────────────────────────────────────────
 // Records table
@@ -877,7 +890,7 @@ class _TableRowState extends State<_TableRow> {
           tooltip:   'Edit',
         ),
         if (canDelete) ...[
-          const SizedBox(width: 6),
+          const SizedBox(width: 10),
           _ActionBtn(
             icon:      Icons.delete_outline,
             bg:        const Color(0xFFFEE2E2), // light red bg
@@ -915,13 +928,13 @@ class _ActionBtn extends StatelessWidget {
       child: GestureDetector(
         onTap: onTap,
         child: Container(
-          width: 30,
-          height: 30,
+          width: 50,
+          height: 50,
           decoration: BoxDecoration(
             color: bg,
             borderRadius: BorderRadius.circular(7),
           ),
-          child: Icon(icon, size: 15, color: iconColor),
+          child: Icon(icon, size: 30, color: iconColor),
         ),
       ),
     );

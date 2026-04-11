@@ -381,20 +381,51 @@ class RefiningService {
   }
 
   // ── Helpers ──────────────────────────────────────────────────────────────────
-  static String? toIsoDateTime(String date, String? hhmm) {
-    if (date.isEmpty || hhmm == null || hhmm.isEmpty) return null;
-    return '${date}T$hhmm:00';
+  static String toIsoDateTime(String date, String time) {
+    try {
+      // Handle 12-hour format: "4:14 PM"
+      if (time.toUpperCase().contains('AM') || time.toUpperCase().contains('PM')) {
+        final parts = time.trim().split(' ');
+        final timeParts = parts[0].split(':');
+        int hour = int.parse(timeParts[0]);
+        final int minute = int.parse(timeParts[1]);
+        final String period = parts[1].toUpperCase();
+
+        if (period == 'PM' && hour != 12) hour += 12;
+        if (period == 'AM' && hour == 12) hour = 0;
+
+        final String h = hour.toString().padLeft(2, '0');
+        final String m = minute.toString().padLeft(2, '0');
+        return '${date}T$h:$m:00';
+      }
+
+      // Handle 24-hour format: "16:14"
+      final parts = time.split(':');
+      final String h = parts[0].padLeft(2, '0');
+      final String m = parts[1].padLeft(2, '0');
+      return '${date}T$h:$m:00';
+
+    } catch (_) {
+      return '${date}T00:00:00';
+    }
   }
 
-  static String? toHHmm(String? raw) {
-    if (raw == null || raw.isEmpty) return null;
-    if (raw.contains('T')) {
-      final parts = raw.split('T');
-      if (parts.length == 2 && parts[1].length >= 5) {
-        return parts[1].substring(0, 5);
-      }
+  static String? toHHmm(String? isoDateTime) {
+    if (isoDateTime == null || isoDateTime.isEmpty) return null;
+    try {
+      final dt = DateTime.parse(isoDateTime);
+      int hour = dt.hour;
+      final int minute = dt.minute;
+      final String period = hour >= 12 ? 'PM' : 'AM';
+
+      hour = hour % 12;
+      if (hour == 0) hour = 12;
+
+      final String m = minute.toString().padLeft(2, '0');
+      return '$hour:$m $period';
+    } catch (_) {
+      return null;
     }
-    return raw.length >= 5 ? raw.substring(0, 5) : raw;
   }
 }
 

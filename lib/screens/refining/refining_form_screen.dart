@@ -72,13 +72,17 @@ class _RefiningFormScreenState extends State<RefiningFormScreen> {
   // ── Section 3 — Consumption ─────────────────────────────────────────────────
   final _lpgInitCtrl   = TextEditingController();
   final _lpgFinalCtrl  = TextEditingController();
+  final _lpg2InitCtrl  = TextEditingController();
+  final _lpg2FinalCtrl = TextEditingController();
   final _elecInitCtrl  = TextEditingController();
   final _elecFinalCtrl = TextEditingController();
   final _o2Nm3Ctrl     = TextEditingController();
   final _o2TimeCtrl    = TextEditingController();
   // Auto-calculated (read-only display)
   String _lpgConsumed  = '—';
+  String _lpg2Consumed = '—';
   String _elecConsumed = '—';
+
   double? _o2FlowKg;
   double? _o2Consumption;
 
@@ -109,8 +113,11 @@ class _RefiningFormScreenState extends State<RefiningFormScreen> {
   @override
   void dispose() {
     _batchNoCtrl.dispose(); _potNoCtrl.dispose(); _dateCtrl.dispose();
+
     _lpgInitCtrl.dispose(); _lpgFinalCtrl.dispose();
+    _lpg2InitCtrl.dispose(); _lpg2FinalCtrl.dispose();
     _elecInitCtrl.dispose(); _elecFinalCtrl.dispose();
+
     _o2Nm3Ctrl.dispose(); _o2TimeCtrl.dispose();
     for (final r in _rawRows)   r.dispose();
     for (final c in _chemRows)  c.dispose();
@@ -135,27 +142,49 @@ class _RefiningFormScreenState extends State<RefiningFormScreen> {
     setState(() => _isLoading = false);
 
     // Preload smelting stock for all materials to support full offline use.
-    // unawaited(_preloadAllStockForOffline());
+     unawaited(_preloadAllStockForOffline());
   }
 
-  // Future<void> _preloadAllStockForOffline() async {
-  //   if (!mounted || _isPreloadingStock) return;
-  //   if (!ConnectivityService().isOnline || _materials.isEmpty) return;
-  //
-  //   setState(() => _isPreloadingStock = true);
-  //   try {
-  //     await RefiningService().preloadSmeltingLotsForMaterials(
-  //       _materials.map((m) => m.id).toList(),
-  //     );
-  //   } finally {
-  //     if (mounted) {
-  //       setState(() => _isPreloadingStock = false);
-  //     } else {
-  //       _isPreloadingStock = false;
-  //     }
-  //   }
-  // }
+  Future<void> _preloadAllStockForOffline() async {
+    if (!mounted || _isPreloadingStock) return;
+    if (!ConnectivityService().isOnline || _materials.isEmpty) return;
 
+    setState(() => _isPreloadingStock = true);
+    try {
+      await RefiningService().preloadSmeltingLotsForMaterials();
+    } finally {
+      if (mounted) {
+        setState(() => _isPreloadingStock = false);
+      } else {
+        _isPreloadingStock = false;
+      }
+    }
+  }
+  String? _convertTo24Hour(String? time12hr) {
+    if (time12hr == null || time12hr.isEmpty) return null;
+
+    try {
+      final parts = time12hr.trim().split(' ');
+      if (parts.length != 2) return null;
+
+      final timeParts = parts[0].split(':');
+      if (timeParts.length != 2) return null;
+
+      int hour = int.parse(timeParts[0]);
+      final minute = int.parse(timeParts[1]);
+      final period = parts[1].toUpperCase();
+
+      if (period == 'PM' && hour != 12) {
+        hour += 12;
+      } else if (period == 'AM' && hour == 12) {
+        hour = 0;
+      }
+
+      return '${hour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')}';
+    } catch (_) {
+      return null;
+    }
+  }
   Future<void> _loadRecord() async {
     final r = await RefiningService().getOne(widget.recordId!);
     if (r == null) { _showSnack('Failed to load record.', error: true); return; }
@@ -170,11 +199,13 @@ class _RefiningFormScreenState extends State<RefiningFormScreen> {
 
     _lpgInitCtrl.text   = r.lpgInitial?.toString() ?? '';
     _lpgFinalCtrl.text  = r.lpgFinal?.toString() ?? '';
+    _lpg2InitCtrl.text  = r.lpg2Initial?.toString() ?? '';
+    _lpg2FinalCtrl.text = r.lpg2Final?.toString() ?? '';
     _elecInitCtrl.text  = r.electricityInitial?.toString() ?? '';
     _elecFinalCtrl.text = r.electricityFinal?.toString() ?? '';
     _o2Nm3Ctrl.text     = r.oxygenFlowNm3?.toString() ?? '';
     _o2TimeCtrl.text    = r.oxygenFlowTime?.toString() ?? '';
-    _calcLpg(); _calcElec(); _calcO2();
+    _calcLpg(); _calcLpg2(); _calcElec(); _calcO2();
 
     for (final rm in r.rawMaterials) _addRawRow(data: rm);
     if (r.rawMaterials.isEmpty) _addRawRow();
@@ -339,6 +370,13 @@ class _RefiningFormScreenState extends State<RefiningFormScreen> {
     final i = double.tryParse(_lpgInitCtrl.text);
     final f = double.tryParse(_lpgFinalCtrl.text);
     setState(() => _lpgConsumed = (i != null && f != null && f >= i)
+        ? '${(f - i).toStringAsFixed(3)} m³' : '—');
+  }
+
+  void _calcLpg2() {
+    final i = double.tryParse(_lpg2InitCtrl.text);
+    final f = double.tryParse(_lpg2FinalCtrl.text);
+    setState(() => _lpg2Consumed = (i != null && f != null && f >= i)
         ? '${(f - i).toStringAsFixed(3)} m³' : '—');
   }
 
@@ -564,6 +602,8 @@ class _RefiningFormScreenState extends State<RefiningFormScreen> {
 
     final lpgInit   = double.tryParse(_lpgInitCtrl.text);
     final lpgFin    = double.tryParse(_lpgFinalCtrl.text);
+    final lpg2Init  = double.tryParse(_lpg2InitCtrl.text);
+    final lpg2Fin   = double.tryParse(_lpg2FinalCtrl.text);
     final elecInit  = double.tryParse(_elecInitCtrl.text);
     final elecFin   = double.tryParse(_elecFinalCtrl.text);
 
@@ -573,11 +613,17 @@ class _RefiningFormScreenState extends State<RefiningFormScreen> {
           ? _potNoCtrl.text.trim() : null,
       'material_id': _materialId,
       'date':        date,
+
       'lpg_initial':             lpgInit,
       'lpg_final':               lpgFin,
       'lpg_consumption':         (lpgInit != null && lpgFin != null && lpgFin >= lpgInit)
           ? lpgFin - lpgInit : null,
+      'lpg2_initial':            lpg2Init,
+      'lpg2_final':              lpg2Fin,
+      'lpg2_consumption':        (lpg2Init != null && lpg2Fin != null && lpg2Fin >= lpg2Init)
+          ? lpg2Fin - lpg2Init : null,
       'electricity_initial':     elecInit,
+
       'electricity_final':       elecFin,
       'electricity_consumption': (elecInit != null && elecFin != null && elecFin >= elecInit)
           ? elecFin - elecInit : null,
@@ -787,7 +833,9 @@ class _RefiningFormScreenState extends State<RefiningFormScreen> {
                     ),
                     GestureDetector(
                       onTap: _isSubmitted ? null : _pickDate,
-                      child: AbsorbPointer(absorbing: _isSubmitted,
+                      child: AbsorbPointer(
+                          // Always absorb pointers so the text field doesn't consume the tap
+                          absorbing: true,
                           child: MesTextField(label: 'Date *',
                               controller: _dateCtrl, readOnly: true,
                               prefixIcon: Icons.calendar_today_outlined)),
@@ -863,12 +911,15 @@ class _RefiningFormScreenState extends State<RefiningFormScreen> {
               _ConsumptionSection(
                 lpgInitCtrl: _lpgInitCtrl, lpgFinalCtrl: _lpgFinalCtrl,
                 lpgConsumed: _lpgConsumed,
+                lpg2InitCtrl: _lpg2InitCtrl, lpg2FinalCtrl: _lpg2FinalCtrl,
+                lpg2Consumed: _lpg2Consumed,
                 elecInitCtrl: _elecInitCtrl, elecFinalCtrl: _elecFinalCtrl,
                 elecConsumed: _elecConsumed,
                 o2Nm3Ctrl: _o2Nm3Ctrl, o2FlowKg: _o2FlowKg,
                 o2TimeCtrl: _o2TimeCtrl, o2Consumption: _o2Consumption,
                 isSubmitted: _isSubmitted,
                 onLpgChanged: (_) { _calcLpg(); },
+                onLpg2Changed: (_) { _calcLpg2(); },
                 onElecChanged: (_) { _calcElec(); },
                 onO2Changed: (_) { _calcO2(); },
               ),
@@ -886,10 +937,23 @@ class _RefiningFormScreenState extends State<RefiningFormScreen> {
                 onCalcTime: _calcProcTime,
                 onSetNow: _isSubmitted ? null : (i, which) {
                   final now = TimeOfDay.now();
-                  final hhmm = '${now.hour.toString().padLeft(2,'0')}:${now.minute.toString().padLeft(2,'0')}';
+
+                  // Convert to 12-hour format
+                  int hour = now.hour;
+                  final minute = now.minute;
+                  final period = hour >= 12 ? 'PM' : 'AM';
+
+                  hour = hour % 12;
+                  if (hour == 0) hour = 12;
+
+                  final formattedTime = '$hour:${minute.toString().padLeft(2, '0')} $period';
+
                   setState(() {
-                    if (which == 'start') _procRows[i].startCtrl.text = hhmm;
-                    else                  _procRows[i].endCtrl.text   = hhmm;
+                    if (which == 'start') {
+                      _procRows[i].startCtrl.text = formattedTime;
+                    } else {
+                      _procRows[i].endCtrl.text = formattedTime;
+                    }
                     _calcProcTime(i);
                   });
                 },
@@ -1103,26 +1167,23 @@ class _InputTable extends StatelessWidget {
       padding: EdgeInsets.zero,
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         _cardHead(title, icon, onAdd),
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Column(children: [
-            _tblHeader(['#', 'Material', 'QTY (KG)', ''], [36, 180, 130, 36]),
-            ...rows.asMap().entries.map((e) => _InputTblRow(
-              index:       e.key,
-              row:         e.value,
-              isSubmitted: isSubmitted,
-              canDelete:   rows.length > 1 && !isSubmitted,
-              onQtyTap:    onQtyTap == null ? null : () => onQtyTap!(e.key),
-              onRemove:    onRemove == null ? null : () => onRemove!(e.key),
-              onRecalc:    onRecalc,
-            )),
-            _tblFooter([
-              (36 + 180.0, 'TOTAL', true),
-              (130.0, total > 0 ? total.toStringAsFixed(3) : '', false),
-              (36.0, '', false),
-            ]),
+        Column(children: [
+          _tblHeader(['#', 'Material', 'QTY (KG)', ''], [36, 180, 130, 36]),
+          ...rows.asMap().entries.map((e) => _InputTblRow(
+            index:       e.key,
+            row:         e.value,
+            isSubmitted: isSubmitted,
+            canDelete:   rows.length > 1 && !isSubmitted,
+            onQtyTap:    onQtyTap == null ? null : () => onQtyTap!(e.key),
+            onRemove:    onRemove == null ? null : () => onRemove!(e.key),
+            onRecalc:    onRecalc,
+          )),
+          _tblFooter([
+            (36 + 180.0, 'TOTAL', true),
+            (130.0, total > 0 ? total.toStringAsFixed(3) : '', false),
+            (36.0, '', false),
           ]),
-        ),
+        ]),
       ]),
     );
   }
@@ -1225,20 +1286,24 @@ class _InputTblRowState extends State<_InputTblRow> {
 class _ConsumptionSection extends StatelessWidget {
   final TextEditingController lpgInitCtrl, lpgFinalCtrl;
   final String lpgConsumed;
+  final TextEditingController lpg2InitCtrl, lpg2FinalCtrl;
+  final String lpg2Consumed;
   final TextEditingController elecInitCtrl, elecFinalCtrl;
   final String elecConsumed;
   final TextEditingController o2Nm3Ctrl, o2TimeCtrl;
   final double? o2FlowKg, o2Consumption;
   final bool isSubmitted;
-  final ValueChanged<String> onLpgChanged, onElecChanged, onO2Changed;
+  final ValueChanged<String> onLpgChanged, onLpg2Changed, onElecChanged, onO2Changed;
 
   const _ConsumptionSection({
     required this.lpgInitCtrl, required this.lpgFinalCtrl, required this.lpgConsumed,
+    required this.lpg2InitCtrl, required this.lpg2FinalCtrl, required this.lpg2Consumed,
     required this.elecInitCtrl, required this.elecFinalCtrl, required this.elecConsumed,
     required this.o2Nm3Ctrl, required this.o2FlowKg,
     required this.o2TimeCtrl, required this.o2Consumption,
     required this.isSubmitted,
-    required this.onLpgChanged, required this.onElecChanged, required this.onO2Changed,
+    required this.onLpgChanged, required this.onLpg2Changed,
+    required this.onElecChanged, required this.onO2Changed,
   });
 
   @override
@@ -1262,17 +1327,23 @@ class _ConsumptionSection extends StatelessWidget {
               border: Border(bottom: BorderSide(color: AppColors.border, width: 2))),
           child: Row(children: [
             _ch('', 130),
-            _ch('LPG', 160, icon: Icons.local_fire_department_outlined),
+
+            _ch('LPG 1', 160, icon: Icons.local_fire_department_outlined),
+            _ch('LPG 2', 160, icon: Icons.local_fire_department_outlined),
             _ch('Electricity', 160, icon: Icons.bolt_outlined),
+
             Expanded(child: _ch('Liquid Oxygen', double.infinity,
                 icon: Icons.water_drop_outlined)),
           ]),
         ),
         // Row: Initial
+
         _ConsRow(
           label: 'Initial',
           lpg:   _numField(lpgInitCtrl, isSubmitted, onChanged: onLpgChanged),
+          lpg2:  _numField(lpg2InitCtrl, isSubmitted, onChanged: onLpg2Changed),
           elec:  _numField(elecInitCtrl, isSubmitted, onChanged: onElecChanged),
+
           o2: Row(children: [
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               _subLabel('FLOW (NM³)', badge: 'MANUAL', badgeColor: const Color(0xFF0369A1),
@@ -1288,10 +1359,13 @@ class _ConsumptionSection extends StatelessWidget {
           ]),
         ),
         // Row: Final
+
         _ConsRow(
           label: 'Final',
           lpg:   _numField(lpgFinalCtrl, isSubmitted, onChanged: onLpgChanged),
+          lpg2:  _numField(lpg2FinalCtrl, isSubmitted, onChanged: onLpg2Changed),
           elec:  _numField(elecFinalCtrl, isSubmitted, onChanged: onElecChanged),
+
           o2: SizedBox(width: 160, child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -1310,14 +1384,20 @@ class _ConsumptionSection extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               child: Text('CONSUMPTION', style: AppTextStyles.label(color: AppColors.green)),
             )),
+
             SizedBox(width: 160, child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               child: _consTotal(lpgConsumed),
             )),
             SizedBox(width: 160, child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              child: _consTotal(lpg2Consumed),
+            )),
+            SizedBox(width: 160, child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               child: _consTotal(elecConsumed),
             )),
+
             Expanded(child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -1411,8 +1491,8 @@ class _ConsumptionSection extends StatelessWidget {
 
 class _ConsRow extends StatelessWidget {
   final String label;
-  final Widget lpg, elec, o2;
-  const _ConsRow({required this.label, required this.lpg,
+  final Widget lpg, lpg2, elec, o2;
+  const _ConsRow({required this.label, required this.lpg, required this.lpg2,
     required this.elec, required this.o2});
 
   @override
@@ -1428,6 +1508,9 @@ class _ConsRow extends StatelessWidget {
       SizedBox(width: 160, child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           child: lpg)),
+      SizedBox(width: 160, child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          child: lpg2)),
       SizedBox(width: 160, child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           child: elec)),
@@ -1469,47 +1552,44 @@ class _ProcessTable extends StatelessWidget {
       padding: EdgeInsets.zero,
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         _cardHead('Process Details', Icons.schedule_outlined, onAdd),
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Column(children: [
-            Container(
-              decoration: const BoxDecoration(color: AppColors.greenLight,
-                  border: Border(bottom: BorderSide(color: AppColors.border, width: 2))),
-              child: Row(children: [
-                _ph('Process',     180),
-                _ph('Start',       110, center: true),
-                _ph('',             44),
-                _ph('End',         110, center: true),
-                _ph('',             44),
-                _ph('Total Time',   90),
-                _ph('',             36),
-              ]),
-            ),
-            ...rows.asMap().entries.map((e) => _ProcTblRow(
-              index: e.key, row: e.value, isSubmitted: isSubmitted,
-              processNames: processNames,
-              onSetNow: onSetNow, onPickTime: onPickTime,
-              onCalcTime: onCalcTime,
-            )),
-            Container(
-              decoration: const BoxDecoration(color: AppColors.greenLight,
-                  border: Border(top: BorderSide(color: AppColors.border, width: 2))),
-              child: Row(children: [
-                SizedBox(width: 180 + 110 + 44 + 110 + 44, child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                  child: Align(alignment: Alignment.centerRight,
-                      child: Text('TOTAL PROCESS TIME',
-                          style: AppTextStyles.label(color: AppColors.green))),
-                )),
-                SizedBox(width: 90 + 36, child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-                  child: Text(totalStr, style: GoogleFonts.outfit(fontSize: 12.5,
-                      fontWeight: FontWeight.w700, color: AppColors.green)),
-                )),
-              ]),
-            ),
-          ]),
-        ),
+        Column(children: [
+          Container(
+            decoration: const BoxDecoration(color: AppColors.greenLight,
+                border: Border(bottom: BorderSide(color: AppColors.border, width: 2))),
+            child: Row(children: [
+              _ph('Process',     180),
+              _ph('Start',       110, center: true),
+              _ph('',             44),
+              _ph('End',         110, center: true),
+              _ph('',             44),
+              _ph('Total Time',   90),
+              _ph('',             36),
+            ]),
+          ),
+          ...rows.asMap().entries.map((e) => _ProcTblRow(
+            index: e.key, row: e.value, isSubmitted: isSubmitted,
+            processNames: processNames,
+            onSetNow: onSetNow, onPickTime: onPickTime,
+            onCalcTime: onCalcTime, onRemove: onRemove,
+          )),
+          Container(
+            decoration: const BoxDecoration(color: AppColors.greenLight,
+                border: Border(top: BorderSide(color: AppColors.border, width: 2))),
+            child: Row(children: [
+              SizedBox(width: 180 + 110 + 44 + 110 + 44, child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                child: Align(alignment: Alignment.centerRight,
+                    child: Text('TOTAL PROCESS TIME',
+                        style: AppTextStyles.label(color: AppColors.green))),
+              )),
+              SizedBox(width: 90 + 36, child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                child: Text(totalStr, style: GoogleFonts.outfit(fontSize: 12.5,
+                    fontWeight: FontWeight.w700, color: AppColors.green)),
+              )),
+            ]),
+          ),
+        ]),
       ]),
     );
   }
@@ -1533,11 +1613,12 @@ class _ProcTblRow extends StatefulWidget {
   final void Function(int, String)? onSetNow;
   final void Function(int, String)? onPickTime;
   final ValueChanged<int> onCalcTime;
+  final ValueChanged<int>? onRemove;
 
   const _ProcTblRow({
     required this.index, required this.row, required this.isSubmitted,
     required this.processNames, required this.onSetNow, required this.onPickTime,
-    required this.onCalcTime,
+    required this.onCalcTime,required this.onRemove,
   });
 
   @override
@@ -1548,68 +1629,127 @@ class _ProcTblRowState extends State<_ProcTblRow> {
   @override
   Widget build(BuildContext context) {
     final row = widget.row;
-    final ro  = widget.isSubmitted;
-
-    Widget timeInput(TextEditingController ctrl, String which) =>
-        GestureDetector(
-          onTap: ro ? null : () => widget.onPickTime?.call(widget.index, which),
-          child: AbsorbPointer(absorbing: ro, child: TextField(
-            controller: ctrl, readOnly: ro,
-            style: GoogleFonts.outfit(fontSize: 12.5, color: AppColors.textDark),
-            decoration: InputDecoration(
-              hintText: '--:--',
-              hintStyle: GoogleFonts.outfit(fontSize: 12, color: AppColors.textMuted),
-              isDense: true, filled: true, fillColor: AppColors.greenXLight,
-              contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(6),
-                  borderSide: const BorderSide(color: AppColors.border, width: 1.5)),
-              enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(6),
-                  borderSide: const BorderSide(color: AppColors.border, width: 1.5)),
-              focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(6),
-                  borderSide: const BorderSide(color: AppColors.green, width: 1.5)),
-            ),
-          )),
-        );
-
-    Widget nowBtn(Color bg, String label, String which) => ro
-        ? const SizedBox(width: 44)
-        : SizedBox(width: 44, child: Center(child: GestureDetector(
-      onTap: () => widget.onSetNow?.call(widget.index, which),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-        decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(5)),
-        child: Text(label, style: GoogleFonts.outfit(fontSize: 9,
-            fontWeight: FontWeight.w700, color: Colors.white)),
-      ),
-    )));
+    final ro = widget.isSubmitted;
 
     return Container(
       decoration: const BoxDecoration(
-          border: Border(bottom: BorderSide(color: AppColors.borderLight))),
+        border: Border(bottom: BorderSide(color: AppColors.borderLight)),
+      ),
       child: Row(children: [
-        SizedBox(width: 180, child: Padding(padding: const EdgeInsets.all(5),
-          child: ro
-              ? _roCell(row.processName, 170)
-              : SearchableDropdown<String>(
-            value: row.processName.isNotEmpty ? row.processName : null,
-            items: widget.processNames,
-            displayString: (item) => item,
-            hint: 'Select process…',
-            onChanged: (v) => setState(() => row.processName = v ?? ''),
+        // Process name column
+        SizedBox(
+          width: 180,
+          child: Padding(
+            padding: const EdgeInsets.all(5),
+            child: ro
+                ? _roCell(row.processName, 170)
+                : SearchableDropdown<String>(
+              value: row.processName.isNotEmpty ? row.processName : null,
+              items: widget.processNames,
+              displayString: (item) => item,
+              hint: 'Select process…',
+              onChanged: (v) => setState(() => row.processName = v ?? ''),
+            ),
           ),
-        )),
-        SizedBox(width: 110, child: Padding(padding: const EdgeInsets.all(5),
-            child: timeInput(row.startCtrl, 'start'))),
-        nowBtn(const Color(0xFF16A34A), 'START', 'start'),
-        SizedBox(width: 110, child: Padding(padding: const EdgeInsets.all(5),
-            child: timeInput(row.endCtrl, 'end'))),
-        nowBtn(const Color(0xFFDC2626), 'END', 'end'),
-        SizedBox(width: 90, child: Padding(padding: const EdgeInsets.all(5),
-          child: _tblInput(controller: row.totalCtrl, readOnly: true,
-              calcStyle: true, hint: '0 min'),
-        )),
-        SizedBox(width: 36, child: Center(child: (widget.row.processName.isNotEmpty || !ro)
-            ? _delBtn(() {}) : const SizedBox.shrink())),
+        ),
+        // Start time - using CompactTimePickerField
+        SizedBox(
+          width: 110,
+          child: Padding(
+            padding: const EdgeInsets.all(5),
+            child: CompactTimePickerField(
+              controller: row.startCtrl,
+              readOnly: ro,
+              onTimeSelected: () => widget.onCalcTime(widget.index),
+            ),
+          ),
+        ),
+        // Start now button
+        ro
+            ? const SizedBox(width: 44)
+            : SizedBox(
+          width: 44,
+          child: Center(
+            child: GestureDetector(
+              onTap: () => widget.onSetNow?.call(widget.index, 'start'),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF16A34A),
+                  borderRadius: BorderRadius.circular(5),
+                ),
+                child: const Text(
+                  'START',
+                  style: TextStyle(
+                    fontSize: 9,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+        // End time - using CompactTimePickerField
+        SizedBox(
+          width: 110,
+          child: Padding(
+            padding: const EdgeInsets.all(5),
+            child: CompactTimePickerField(
+              controller: row.endCtrl,
+              readOnly: ro,
+              onTimeSelected: () => widget.onCalcTime(widget.index),
+            ),
+          ),
+        ),
+        // End now button
+        ro
+            ? const SizedBox(width: 44)
+            : SizedBox(
+          width: 44,
+          child: Center(
+            child: GestureDetector(
+              onTap: () => widget.onSetNow?.call(widget.index, 'end'),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFDC2626),
+                  borderRadius: BorderRadius.circular(5),
+                ),
+                child: const Text(
+                  'END',
+                  style: TextStyle(
+                    fontSize: 9,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+        // Total time
+        SizedBox(
+          width: 90,
+          child: Padding(
+            padding: const EdgeInsets.all(5),
+            child: _tblInput(
+              controller: row.totalCtrl,
+              readOnly: true,
+              calcStyle: true,
+              hint: '0 min',
+            ),
+          ),
+        ),
+        // Delete button
+        SizedBox(
+          width: 36,
+          child: Center(
+            child: (row.processName.isNotEmpty || !ro)
+                ? _delBtn(() => widget.onRemove?.call(widget.index))
+                : const SizedBox.shrink(),
+          ),
+        ),
       ]),
     );
   }
@@ -1642,24 +1782,21 @@ class _OutputTable extends StatelessWidget {
       padding: EdgeInsets.zero,
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         _cardHead(title, icon, onAdd),
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Column(children: [
-            _tblHeader(['#', 'Material', 'QTY (KG)', ''], [36, 180, 130, 36]),
-            ...rows.asMap().entries.map((e) => _OutputTblRow(
-              index: e.key, row: e.value, isSubmitted: isSubmitted,
-              canDelete: rows.length > 1 && !isSubmitted,
-              onQtyTap: onQtyTap == null ? null : () => onQtyTap!(e.key),
-              onRemove: onRemove == null ? null : () => onRemove!(e.key),
-              onRecalc: onRecalc,
-            )),
-            _tblFooter([
-              (36 + 180.0, 'TOTAL', true),
-              (130.0, total > 0 ? total.toStringAsFixed(3) : '', false),
-              (36.0, '', false),
-            ]),
+        Column(children: [
+          _tblHeader(['#', 'Material', 'QTY (KG)', ''], [36, 180, 130, 36]),
+          ...rows.asMap().entries.map((e) => _OutputTblRow(
+            index: e.key, row: e.value, isSubmitted: isSubmitted,
+            canDelete: rows.length > 1 && !isSubmitted,
+            onQtyTap: onQtyTap == null ? null : () => onQtyTap!(e.key),
+            onRemove: onRemove == null ? null : () => onRemove!(e.key),
+            onRecalc: onRecalc,
+          )),
+          _tblFooter([
+            (36 + 180.0, 'TOTAL', true),
+            (130.0, total > 0 ? total.toStringAsFixed(3) : '', false),
+            (36.0, '', false),
           ]),
-        ),
+        ]),
       ]),
     );
   }

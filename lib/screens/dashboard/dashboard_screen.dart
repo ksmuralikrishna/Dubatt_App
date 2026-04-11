@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -13,7 +14,12 @@ import 'package:dubatt_app/services/local_db_service.dart';
 
 class DashboardScreen extends StatefulWidget {
   final VoidCallback onLogout;
-  const DashboardScreen({super.key, required this.onLogout});
+  final bool embedInShell;
+  const DashboardScreen({
+    super.key,
+    required this.onLogout,
+    this.embedInShell = true,
+  });
 
   @override
   State<DashboardScreen> createState() => _DashboardScreenState();
@@ -27,6 +33,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
   int _pendingSync    = 0;
   int _submittedToday = 0;
   int _activeLots     = 0;
+
+  StreamSubscription<SyncState>? _syncSub;
 
   // Recent records
   List<Map<String, dynamic>> _recentRecords = [];
@@ -46,9 +54,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
     // });
 
     // ── Rebuild UI on sync state changes (badge update)
-    SyncService().onStateChanged = (state) {
+    _syncSub = SyncService().stateStream.listen((state) {
       if (mounted) setState(() {});
-    };
+    });
+  }
+
+  @override
+  void dispose() {
+    _syncSub?.cancel();
+    super.dispose();
   }
   Future<void> _downloadMasterData() async {
     if (!ConnectivityService().isOnline) {
@@ -214,10 +228,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final isTablet = Responsive.isTablet(context);
     final today    = DateFormat('EEEE, dd MMM yyyy').format(DateTime.now());
 
-    return AppShell(
-      currentRoute: '/dashboard',
-      onLogout: widget.onLogout,
-      child: RefreshIndicator(
+    final content = RefreshIndicator(
         color: AppColors.green,
         onRefresh: _loadData,
         child: SingleChildScrollView(
@@ -384,7 +395,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ),
           ),
         ),
-      ),
+      );
+
+    if (!widget.embedInShell) return content;
+    return AppShell(
+      currentRoute: '/dashboard',
+      onLogout: widget.onLogout,
+      child: content,
     );
   }
 }

@@ -93,12 +93,14 @@ class AppShell extends StatelessWidget {
   final Widget child;
   final String currentRoute;
   final VoidCallback onLogout;
+  final ValueChanged<String>? onNavigate;
 
   const AppShell({
     super.key,
     required this.child,
     required this.currentRoute,
     required this.onLogout,
+    this.onNavigate,
   });
 
   @override
@@ -107,11 +109,13 @@ class AppShell extends StatelessWidget {
         ? _TabletShell(
       currentRoute: currentRoute,
       onLogout: onLogout,
+      onNavigate: onNavigate,
       child: child,
     )
         : _MobileShell(
       currentRoute: currentRoute,
       onLogout: onLogout,
+      onNavigate: onNavigate,
       child: child,
     );
   }
@@ -174,11 +178,13 @@ class _TabletShell extends StatefulWidget {
   final Widget child;
   final String currentRoute;
   final VoidCallback onLogout;
+  final ValueChanged<String>? onNavigate;
 
   const _TabletShell({
     required this.child,
     required this.currentRoute,
     required this.onLogout,
+    this.onNavigate,
   });
 
   @override
@@ -203,6 +209,7 @@ class _TabletShellState extends State<_TabletShell> {
             child: _Sidebar(
               currentRoute: widget.currentRoute,
               collapsed: _collapsed,
+              onNavigate: widget.onNavigate,
               onToggle: () => setState(() => _collapsed = !_collapsed),
               onLogout: () =>
                   _confirmLogout(context, widget.onLogout),
@@ -227,12 +234,14 @@ class _TabletShellState extends State<_TabletShell> {
 class _Sidebar extends StatelessWidget {
   final String currentRoute;
   final bool collapsed;
+  final ValueChanged<String>? onNavigate;
   final VoidCallback onToggle;
   final VoidCallback onLogout;
 
   const _Sidebar({
     required this.currentRoute,
     required this.collapsed,
+    this.onNavigate,
     required this.onToggle,
     required this.onLogout,
   });
@@ -354,8 +363,12 @@ class _Sidebar extends StatelessWidget {
                         onTap: () {
                           if (!currentRoute
                               .startsWith(item.route)) {
-                            Navigator.of(context)
-                                .pushReplacementNamed(item.route);
+                            if (onNavigate != null) {
+                              onNavigate!(item.route);
+                            } else {
+                              Navigator.of(context)
+                                  .pushReplacementNamed(item.route);
+                            }
                           }
                         },
                       )),
@@ -558,11 +571,13 @@ class _MobileShell extends StatelessWidget {
   final Widget child;
   final String currentRoute;
   final VoidCallback onLogout;
+  final ValueChanged<String>? onNavigate;
 
   const _MobileShell({
     required this.child,
     required this.currentRoute,
     required this.onLogout,
+    this.onNavigate,
   });
 
   // Bottom nav only shows Dashboard + currently active module
@@ -704,9 +719,13 @@ class _MobileShell extends StatelessWidget {
                                     .pop(); // close drawer
                                 if (!currentRoute
                                     .startsWith(item.route)) {
-                                  Navigator.of(context)
-                                      .pushReplacementNamed(
-                                      item.route);
+                                  if (onNavigate != null) {
+                                    onNavigate!(item.route);
+                                  } else {
+                                    Navigator.of(context)
+                                        .pushReplacementNamed(
+                                        item.route);
+                                  }
                                 }
                               },
                               child: AnimatedContainer(
@@ -870,8 +889,12 @@ class _MobileShell extends StatelessWidget {
           ],
           onTap: (i) {
             if (i == 0) {
-              Navigator.of(context)
-                  .pushReplacementNamed('/dashboard');
+              if (onNavigate != null) {
+                onNavigate!('/dashboard');
+              } else {
+                Navigator.of(context)
+                    .pushReplacementNamed('/dashboard');
+              }
             }
             // Tap on module tab just stays — use drawer to switch modules
           },

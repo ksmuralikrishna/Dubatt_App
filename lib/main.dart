@@ -9,20 +9,15 @@ import 'package:flutter/services.dart';
 import 'theme/app_theme.dart';
 import 'services/auth_service.dart';
 import 'screens/auth/login_screen.dart';
-import 'screens/dashboard/dashboard_screen.dart';
-import 'screens/receiving/receiving_list_screen.dart';
 import 'screens/receiving/receiving_form_screen.dart';
 
 
 // ── Uncomment each import as you create the screen files
-import 'screens/acid_testing/acid_testing_list_screen.dart';
 import 'screens/acid_testing/acid_testing_form_screen.dart';
-import 'screens/bbsu/bbsu_list_screen.dart';
 import 'screens/bbsu/bbsu_form_screen.dart';
-import 'screens/smelting/smelting_list_screen.dart';
 import 'screens/smelting/smelting_form_screen.dart';
-import 'screens/refining/refining_list_screen.dart';
 import 'screens/refining/refining_form_screen.dart';
+import 'screens/home/home_shell_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -68,12 +63,18 @@ class MesApp extends StatelessWidget {
 
     // ── Dashboard ──────────────────────────────────────────────
     if (name == '/dashboard') {
-      return _slide(DashboardScreen(onLogout: root._onLogout));
+      return _slide(HomeShellScreen(
+        onLogout: root._onLogout,
+        initialRoute: '/dashboard',
+      ));
     }
 
     // ── Receiving ──────────────────────────────────────────────
     if (name == '/receiving') {
-      return _slide(ReceivingListScreen(onLogout: root._onLogout));
+      return _slide(HomeShellScreen(
+        onLogout: root._onLogout,
+        initialRoute: '/receiving',
+      ));
     }
     if (name == '/receiving/create') {
       return _slide(ReceivingFormScreen(onLogout: root._onLogout));
@@ -88,7 +89,10 @@ class MesApp extends StatelessWidget {
 
     // ── Acid Testing ───────────────────────────────────────────
     if (name == '/acid-testing') {
-      return _slide(AcidTestingListScreen(onLogout: root._onLogout));
+      return _slide(HomeShellScreen(
+        onLogout: root._onLogout,
+        initialRoute: '/acid-testing',
+      ));
     }
     if (name == '/acid-testing/create') {
       return _slide(AcidTestingFormScreen(onLogout: root._onLogout));
@@ -103,7 +107,10 @@ class MesApp extends StatelessWidget {
 
     // ── BBSU ───────────────────────────────────────────────────
     if (name == '/bbsu') {
-      return _slide(BbsuListScreen(onLogout: root._onLogout));
+      return _slide(HomeShellScreen(
+        onLogout: root._onLogout,
+        initialRoute: '/bbsu',
+      ));
     }
     if (name == '/bbsu/create') {
       return _slide(BbsuFormScreen(onLogout: root._onLogout));
@@ -118,7 +125,10 @@ class MesApp extends StatelessWidget {
 
     // ── Smelting ───────────────────────────────────────────────
     if (name == '/smelting') {
-      return _slide(SmeltingListScreen(onLogout: root._onLogout));
+      return _slide(HomeShellScreen(
+        onLogout: root._onLogout,
+        initialRoute: '/smelting',
+      ));
     }
     if (name == '/smelting/create') {
       return _slide(SmeltingFormScreen(onLogout: root._onLogout));
@@ -133,7 +143,10 @@ class MesApp extends StatelessWidget {
 
     // ── Refining ───────────────────────────────────────────────
     if (name == '/refining') {
-      return _slide(RefiningListScreen(onLogout: root._onLogout));
+      return _slide(HomeShellScreen(
+        onLogout: root._onLogout,
+        initialRoute: '/refining',
+      ));
     }
     if (name == '/refining/create') {
       return _slide(RefiningFormScreen(onLogout: root._onLogout));
@@ -202,7 +215,7 @@ class _AppRootState extends State<_AppRoot> {
     if (!_isLoggedIn) {
       return LoginScreen(onLoginSuccess: _onLoginSuccess);
     }
-    return DashboardScreen(onLogout: _onLogout);
+    return HomeShellScreen(onLogout: _onLogout);
   }
 }
 

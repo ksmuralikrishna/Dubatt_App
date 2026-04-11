@@ -122,6 +122,31 @@ class _SmeltingFormScreenState extends State<SmeltingFormScreen> {
   void _initDefaultOutputBlocks() {
     _outputBlocks = List.generate(11, (i) => _OutputBlock(blockNo: i + 1));
   }
+  String? _convertTo24Hour(String? time12hr) {
+    if (time12hr == null || time12hr.isEmpty) return null;
+
+    try {
+      final parts = time12hr.trim().split(' ');
+      if (parts.length != 2) return null;
+
+      final timeParts = parts[0].split(':');
+      if (timeParts.length != 2) return null;
+
+      int hour = int.parse(timeParts[0]);
+      final minute = int.parse(timeParts[1]);
+      final period = parts[1].toUpperCase();
+
+      if (period == 'PM' && hour != 12) {
+        hour += 12;
+      } else if (period == 'AM' && hour == 12) {
+        hour = 0;
+      }
+
+      return '${hour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')}';
+    } catch (_) {
+      return null;
+    }
+  }
 
   Future<void> _openOutputBlockModal() async {
     await showModalBottomSheet(
@@ -153,26 +178,24 @@ class _SmeltingFormScreenState extends State<SmeltingFormScreen> {
     setState(() => _isLoading = false);
 
     // Preload stock for all materials for offline usage.
-    // unawaited(_preloadAllStockForOffline());
+      unawaited(_preloadAllStockForOffline());
   }
 
-  // Future<void> _preloadAllStockForOffline() async {
-  //   if (!mounted || _isPreloadingStock) return;
-  //   if (!ConnectivityService().isOnline || _materials.isEmpty) return;
-  //
-  //   setState(() => _isPreloadingStock = true);
-  //   try {
-  //     await SmeltingService().preloadBbsuLotsForMaterials(
-  //       _materials.map((m) => m.id).toList(),
-  //     );
-  //   } finally {
-  //     if (mounted) {
-  //       setState(() => _isPreloadingStock = false);
-  //     } else {
-  //       _isPreloadingStock = false;
-  //     }
-  //   }
-  // }
+  Future<void> _preloadAllStockForOffline() async {
+    if (!mounted || _isPreloadingStock) return;
+    if (!ConnectivityService().isOnline || _materials.isEmpty) return;
+
+    setState(() => _isPreloadingStock = true);
+    try {
+      await SmeltingService().preloadBbsuLotsForMaterials();
+    } finally {
+      if (mounted) {
+        setState(() => _isPreloadingStock = false);
+      } else {
+        _isPreloadingStock = false;
+      }
+    }
+  }
 
   Future<void> _loadRecord() async {
     final r = await SmeltingService().getOne(widget.recordId!);
@@ -318,9 +341,29 @@ class _SmeltingFormScreenState extends State<SmeltingFormScreen> {
     final e = r.endCtrl.text;
     if (s.isNotEmpty && e.isNotEmpty) {
       try {
-        final sp = s.split(':').map(int.parse).toList();
-        final ep = e.split(':').map(int.parse).toList();
-        int m = (ep[0] * 60 + ep[1]) - (sp[0] * 60 + sp[1]);
+        // Parse 12-hour format like "2:30 PM"
+        int getMinutesFrom12Hour(String timeStr) {
+          final parts = timeStr.split(' ');
+          if (parts.length != 2) return 0;
+
+          final timeParts = parts[0].split(':');
+          int hour = int.parse(timeParts[0]);
+          final minute = int.parse(timeParts[1]);
+          final period = parts[1];
+
+          if (period == 'PM' && hour != 12) {
+            hour += 12;
+          } else if (period == 'AM' && hour == 12) {
+            hour = 0;
+          }
+
+          return hour * 60 + minute;
+        }
+
+        int startMins = getMinutesFrom12Hour(s);
+        int endMins = getMinutesFrom12Hour(e);
+
+        int m = endMins - startMins;
         if (m < 0) m += 1440;
         r.totalMins = m;
         r.totalCtrl.text = '${m} min';
@@ -385,14 +428,53 @@ class _SmeltingFormScreenState extends State<SmeltingFormScreen> {
     TimeOfDay current = TimeOfDay.now();
     if (ctrl.text.isNotEmpty) {
       try {
-        final parts = ctrl.text.split(':');
-        current = TimeOfDay(hour: int.parse(parts[0]), minute: int.parse(parts[1]));
+        // Parse 12-hour format
+        final parts = ctrl.text.split(' ');
+        if (parts.length == 2) {
+          final timeParts = parts[0].split(':');
+          final period = parts[1];
+          int hour = int.parse(timeParts[0]);
+          final minute = int.parse(timeParts[1]);
+
+          if (period == 'PM' && hour != 12) {
+            hour += 12;
+          } else if (period == 'AM' && hour == 12) {
+            hour = 0;
+          }
+          current = TimeOfDay(hour: hour, minute: minute);
+        }
       } catch (_) {}
     }
-    final p = await showTimePicker(context: context, initialTime: current);
-    if (p != null) {
-      setState(() => ctrl.text =
-      '${p.hour.toString().padLeft(2, '0')}:${p.minute.toString().padLeft(2, '0')}');
+
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: current,
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: const ColorScheme.light(
+              primary: AppColors.green,
+              onPrimary: Colors.white,
+            ),
+          ),
+          child: MediaQuery(
+            data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: false),
+            child: child!,
+          ),
+        );
+      },
+    );
+
+    if (picked != null) {
+      // Convert to 12-hour format
+      int hour = picked.hour;
+      final minute = picked.minute;
+      final period = hour >= 12 ? 'PM' : 'AM';
+      hour = hour % 12;
+      if (hour == 0) hour = 12;
+      final time12hr = '$hour:${minute.toString().padLeft(2, '0')} $period';
+
+      setState(() => ctrl.text = time12hr);
     }
   }
 
@@ -514,10 +596,8 @@ class _SmeltingFormScreenState extends State<SmeltingFormScreen> {
       if (s.isEmpty && e.isEmpty) continue;
       procDetails.add({
         'process_name': p.processName,
-        'start_time':   s.isNotEmpty
-            ? SmeltingService.toIsoDateTime(date, s) : null,
-        'end_time':     e.isNotEmpty
-            ? SmeltingService.toIsoDateTime(date, e) : null,
+        'start_time': _convertTo24Hour(s),
+        'end_time': _convertTo24Hour(e),
         'total_time':   p.totalMins,
         'firing_mode':  p.firingMode.isNotEmpty ? p.firingMode : null,
       });
@@ -545,13 +625,8 @@ class _SmeltingFormScreenState extends State<SmeltingFormScreen> {
       'date':      date,
       'rotary_no': _rotaryNo,
       'charge_no': _chargeCtrl.text.trim(),
-      'start_time': _startCtrl.text.isNotEmpty
-          ? _startCtrl.text
-          : null,
-
-      'end_time': _endCtrl.text.isNotEmpty
-          ? _endCtrl.text
-          : null,
+      'start_time': _convertTo24Hour(_startCtrl.text),
+      'end_time': _convertTo24Hour(_endCtrl.text),
       'lpg_consumption':         double.tryParse(_lpgCtrl.text),
       'o2_consumption':          double.tryParse(_o2Ctrl.text),
       'id_fan_initial':          idInit,
@@ -886,11 +961,23 @@ class _SmeltingFormScreenState extends State<SmeltingFormScreen> {
                   totalBatchTime: _totalBatchTime,
                   onCalcTime: _calcProcessTime,
                   onSetNow: _isSubmitted ? null : (idx, which) {
-                    final now = TimeOfDay.now();
-                    final hhmm = '${now.hour.toString().padLeft(2,'0')}:${now.minute.toString().padLeft(2,'0')}';
+                    final now = DateTime.now();
+                    int hour = now.hour;
+                    final minute = now.minute;
+                    final period = hour >= 12 ? 'PM' : 'AM';
+
+                    // Convert to 12-hour format
+                    hour = hour % 12;
+                    if (hour == 0) hour = 12;
+
+                    final time12hr = '$hour:${minute.toString().padLeft(2, '0')} $period';
+
                     setState(() {
-                      if (which == 'start') _processRows[idx].startCtrl.text = hhmm;
-                      else                  _processRows[idx].endCtrl.text   = hhmm;
+                      if (which == 'start') {
+                        _processRows[idx].startCtrl.text = time12hr;
+                      } else {
+                        _processRows[idx].endCtrl.text = time12hr;
+                      }
                       _calcProcessTime(idx);
                     });
                   },
@@ -1002,9 +1089,9 @@ class _SmeltingFormScreenState extends State<SmeltingFormScreen> {
 
                 if (wide) {
                   return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Expanded(child: processCard),
+                    Expanded(flex: 65, child: processCard),
                     const SizedBox(width: 16),
-                    Expanded(child: rightCol),
+                    Expanded(flex: 35, child: rightCol),
                   ]);
                 }
                 return Column(children: [
@@ -1281,9 +1368,9 @@ class _ProcessCard extends StatelessWidget {
               child: Row(children: [
                 _ph('Process',      130),
                 _ph('Start',        110, center: true),
-                _ph('',             44),
+                _ph('',             60),
                 _ph('End',          110, center: true),
-                _ph('',             44),
+                _ph('',             60),
                 _ph('Total',        90),
                 _ph('Firing Mode',  120),
               ]),
@@ -1696,8 +1783,12 @@ class _ProcTblRow extends StatefulWidget {
   final ValueChanged<int> onCalcTime;
 
   const _ProcTblRow({
-    required this.index, required this.row, required this.isSubmitted,
-    required this.onSetNow, required this.onPickTime, required this.onCalcTime,
+    required this.index,
+    required this.row,
+    required this.isSubmitted,
+    required this.onSetNow,
+    required this.onPickTime,
+    required this.onCalcTime,
   });
 
   @override
@@ -1710,35 +1801,14 @@ class _ProcTblRowState extends State<_ProcTblRow> {
     final row = widget.row;
     final ro  = widget.isSubmitted;
 
-    Widget timeInput(TextEditingController ctrl) => GestureDetector(
-      onTap: ro ? null : () => widget.onPickTime?.call(widget.index, ctrl == row.startCtrl ? 'start' : 'end'),
-      child: AbsorbPointer(absorbing: ro, child: TextField(
-        controller: ctrl,
-        readOnly: ro,
-        style: GoogleFonts.outfit(fontSize: 12.5, color: AppColors.textDark),
-        decoration: InputDecoration(
-          hintText: '--:--',
-          hintStyle: GoogleFonts.outfit(fontSize: 12, color: AppColors.textMuted),
-          isDense: true, filled: true, fillColor: AppColors.greenXLight,
-          contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(6),
-              borderSide: const BorderSide(color: AppColors.border, width: 1.5)),
-          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(6),
-              borderSide: const BorderSide(color: AppColors.border, width: 1.5)),
-          focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(6),
-              borderSide: const BorderSide(color: AppColors.green, width: 1.5)),
-        ),
-      )),
-    );
-
     Widget nowBtn(Color bg, String label, String which) => ro
-        ? const SizedBox(width: 44)
-        : SizedBox(width: 44, child: Center(child: GestureDetector(
+        ? const SizedBox(width: 52)
+        : SizedBox(width: 52, child: Center(child: GestureDetector(
       onTap: () => widget.onSetNow?.call(widget.index, which),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
         decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(5)),
-        child: Text(label, style: GoogleFonts.outfit(fontSize: 9,
+        child: Text(label, style: GoogleFonts.outfit(fontSize: 10,
             fontWeight: FontWeight.w700, color: Colors.white)),
       ),
     )));
@@ -1747,21 +1817,48 @@ class _ProcTblRowState extends State<_ProcTblRow> {
       decoration: const BoxDecoration(
           border: Border(bottom: BorderSide(color: AppColors.borderLight))),
       child: Row(children: [
+        // Process Name
         SizedBox(width: 130, child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           child: Text(row.processName, style: GoogleFonts.outfit(fontSize: 11.5,
               fontWeight: FontWeight.w600, color: AppColors.textDark)),
         )),
-        SizedBox(width: 110, child: Padding(padding: const EdgeInsets.all(5),
-            child: timeInput(row.startCtrl))),
+
+        // Start Time - Using CompactTimePickerField
+        Padding(
+          padding: const EdgeInsets.all(5),
+          child: CompactTimePickerField(
+            controller: row.startCtrl,
+            readOnly: ro,
+            width: 110,
+            onTimeSelected: () => widget.onCalcTime(widget.index),
+          ),
+        ),
+
+        // Start Now button
         nowBtn(const Color(0xFF16A34A), 'START', 'start'),
-        SizedBox(width: 110, child: Padding(padding: const EdgeInsets.all(5),
-            child: timeInput(row.endCtrl))),
+
+        // End Time - Using CompactTimePickerField
+        Padding(
+          padding: const EdgeInsets.all(5),
+          child: CompactTimePickerField(
+            controller: row.endCtrl,
+            readOnly: ro,
+            width: 110,
+            onTimeSelected: () => widget.onCalcTime(widget.index),
+          ),
+        ),
+
+        // End Now button
         nowBtn(const Color(0xFFDC2626), 'END', 'end'),
+
+        // Total Time
         SizedBox(width: 90, child: Padding(padding: const EdgeInsets.all(5),
           child: _tblInput(controller: row.totalCtrl, readOnly: true,
               calcStyle: true, hint: '0 min'),
         )),
+
+        // Firing Mode
         SizedBox(width: 120, child: Padding(padding: const EdgeInsets.all(5),
           child: ro
               ? _roCell(row.firingMode, 110)

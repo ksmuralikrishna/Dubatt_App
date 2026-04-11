@@ -27,10 +27,16 @@ import '../../models/acid_testing_model.dart';
 import '../../services/acid_testing_service.dart';
 import '../../services/connectivity_service.dart';
 import 'acid_testing_form_screen.dart';
+import 'package:dubatt_app/services/sync_service.dart';
 
 class AcidTestingListScreen extends StatefulWidget {
   final VoidCallback onLogout;
-  const AcidTestingListScreen({super.key, required this.onLogout});
+  final bool embedInShell;
+  const AcidTestingListScreen({
+    super.key,
+    required this.onLogout,
+    this.embedInShell = true,
+  });
 
   @override
   State<AcidTestingListScreen> createState() =>
@@ -41,6 +47,7 @@ class _AcidTestingListScreenState extends State<AcidTestingListScreen> {
   final _searchCtrl = TextEditingController();
   Timer? _debounce;
   StreamSubscription<bool>? _connectivitySub;
+  StreamSubscription<SyncState>? _syncSub;
 
   List<AcidTestingSummary> _records = [];
   bool _isLoading = true;
@@ -63,13 +70,19 @@ class _AcidTestingListScreenState extends State<AcidTestingListScreen> {
   void initState() {
     super.initState();
     _load();
-    _connectivitySub = ConnectivityService().onlineStream.listen((online) {
-      if (online && mounted) _load(reset: true);
+    // _connectivitySub = ConnectivityService().onlineStream.listen((online) {
+    //   if (online && mounted) _load(reset: true);
+    // });
+    _syncSub = SyncService().stateStream.listen((state) {
+      if ((state == SyncState.done || state == SyncState.idle) && mounted) {
+        _load(reset: true);
+      }
     });
   }
 
   @override
   void dispose() {
+    _syncSub?.cancel();
     _debounce?.cancel();
     _connectivitySub?.cancel();
     _searchCtrl.dispose();
@@ -205,22 +218,16 @@ class _AcidTestingListScreenState extends State<AcidTestingListScreen> {
     final hPad     = Responsive.hPad(context);
     final isTablet = Responsive.isTablet(context);
 
-    return AppShell(
-      currentRoute: '/acid-testing',
-      onLogout: widget.onLogout,
-      child: Column(
-        children: [
-          Expanded(
-            child: SingleChildScrollView(
-              padding:
-              EdgeInsets.fromLTRB(hPad, 28, hPad, 24),
-              child: ConstrainedBox(
-                constraints:
-                const BoxConstraints(maxWidth: 1200),
-                child: Column(
-                  crossAxisAlignment:
-                  CrossAxisAlignment.start,
-                  children: [
+    final content = Column(
+      children: [
+        Expanded(
+          child: SingleChildScrollView(
+            padding: EdgeInsets.fromLTRB(hPad, 28, hPad, 24),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 1200),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
 
                     // ── Offline banner ─────────────────────
                     StreamBuilder<bool>(
@@ -245,6 +252,7 @@ class _AcidTestingListScreenState extends State<AcidTestingListScreen> {
                       subtitle:
                       'Manage acid testing records and pallet logs',
                       actions: [
+                        MesRefreshButton(onPressed: () => _load(reset: true)),
                         MesButton(
                           label: 'Create New',
                           icon: Icons.add,
@@ -344,13 +352,19 @@ class _AcidTestingListScreenState extends State<AcidTestingListScreen> {
                         ],
                       ),
                     ),
-                  ],
-                ),
+                ],
               ),
             ),
           ),
-        ],
-      ),
+        ),
+      ],
+    );
+
+    if (!widget.embedInShell) return content;
+    return AppShell(
+      currentRoute: '/acid-testing',
+      onLogout: widget.onLogout,
+      child: content,
     );
   }
 
@@ -524,7 +538,7 @@ const double _tInHouse  = 115.0;
 const double _tAvgPF    = 115.0;
 const double _tPallets  = 80.0;
 const double _tStatus   = 110.0;
-const double _tActions  = 96.0;
+const double _tActions  = 150.0;
 
 // Mobile — fewer columns
 const double _mDate    = 110.0;
@@ -967,13 +981,13 @@ class _ActionBtn extends StatelessWidget {
       child: GestureDetector(
         onTap: onTap,
         child: Container(
-          width: 30,
-          height: 30,
+          width: 50,
+          height: 50,
           decoration: BoxDecoration(
             color: bg,
             borderRadius: BorderRadius.circular(7),
           ),
-          child: Icon(icon, size: 15, color: iconColor),
+          child: Icon(icon, size: 30, color: iconColor),
         ),
       ),
     );

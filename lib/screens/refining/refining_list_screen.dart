@@ -15,10 +15,16 @@ import '../../models/refining_model.dart';
 import '../../services/refining_service.dart';
 import '../../services/connectivity_service.dart';
 import 'refining_form_screen.dart';
+import 'package:dubatt_app/services/sync_service.dart';
 
 class RefiningListScreen extends StatefulWidget {
   final VoidCallback onLogout;
-  const RefiningListScreen({super.key, required this.onLogout});
+  final bool embedInShell;
+  const RefiningListScreen({
+    super.key,
+    required this.onLogout,
+    this.embedInShell = true,
+  });
 
   @override
   State<RefiningListScreen> createState() => _RefiningListScreenState();
@@ -28,6 +34,7 @@ class _RefiningListScreenState extends State<RefiningListScreen> {
   final _searchCtrl = TextEditingController();
   Timer? _debounce;
   StreamSubscription<bool>? _connectivitySub;
+  StreamSubscription<SyncState>? _syncSub;
 
   List<RefiningSummary> _records = [];
   bool _isLoading = true;
@@ -42,14 +49,21 @@ class _RefiningListScreenState extends State<RefiningListScreen> {
   void initState() {
     super.initState();
     _load();
-    _connectivitySub =
-        ConnectivityService().onlineStream.listen((online) {
-          if (online && mounted) _load(reset: true);
-        });
+    // _connectivitySub =
+    //     ConnectivityService().onlineStream.listen((online) {
+    //       if (online && mounted) _load(reset: true);
+    //     });
+    // ✅ Reload after AppSyncManager finishes syncing offline records
+    _syncSub = SyncService().stateStream.listen((state) {
+      if ((state == SyncState.done || state == SyncState.idle) && mounted) {
+        _load(reset: true);
+      }
+    });
   }
 
   @override
   void dispose() {
+    _syncSub?.cancel();
     _debounce?.cancel();
     _connectivitySub?.cancel();
     _searchCtrl.dispose();
@@ -160,10 +174,7 @@ class _RefiningListScreenState extends State<RefiningListScreen> {
     final hPad     = Responsive.hPad(context);
     final isTablet = Responsive.isTablet(context);
 
-    return AppShell(
-      currentRoute: '/refining',
-      onLogout: widget.onLogout,
-      child: Column(
+    final content = Column(
         children: [
           Expanded(
             child: SingleChildScrollView(
@@ -191,6 +202,7 @@ class _RefiningListScreenState extends State<RefiningListScreen> {
                       title: 'Refining Batches',
                       subtitle: 'Refining log sheet — finished goods & dross tracking',
                       actions: [
+                        MesRefreshButton(onPressed: () => _load(reset: true)),
                         MesButton(
                           label: 'Create New',
                           icon: Icons.add,
@@ -268,7 +280,13 @@ class _RefiningListScreenState extends State<RefiningListScreen> {
             ),
           ),
         ],
-      ),
+      );
+
+    if (!widget.embedInShell) return content;
+    return AppShell(
+      currentRoute: '/refining',
+      onLogout: widget.onLogout,
+      child: content,
     );
   }
 
@@ -367,7 +385,7 @@ const double _tDate    = 100.0;
 const double _tLpg     = 110.0;
 const double _tElec    = 120.0;
 const double _tStatus  = 100.0;
-const double _tActions = 100.0;
+const double _tActions = 150.0;
 
 const double _mBatch   = 130.0;
 const double _mDate    = 100.0;
@@ -624,9 +642,9 @@ class _Btn extends StatelessWidget {
     child: GestureDetector(
       onTap: onTap,
       child: Container(
-        width: 30, height: 30,
+        width: 50, height: 50,
         decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(7)),
-        child: Icon(icon, size: 15, color: fg),
+        child: Icon(icon, size: 30, color: fg),
       ),
     ),
   );

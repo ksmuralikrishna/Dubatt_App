@@ -383,6 +383,8 @@ class RefiningRecord {
   // Consumption
   final double? lpgInitial;
   final double? lpgFinal;
+  final double? lpg2Initial ;
+  final double? lpg2Final  ;
   final double? lpgConsumption;
   final double? electricityInitial;
   final double? electricityFinal;
@@ -409,6 +411,8 @@ class RefiningRecord {
     required this.date,
     this.lpgInitial,
     this.lpgFinal,
+    this.lpg2Initial ,
+    this.lpg2Final,
     this.lpgConsumption,
     this.electricityInitial,
     this.electricityFinal,
@@ -439,6 +443,8 @@ class RefiningRecord {
       date:                    json['date']?.toString() ?? '',
       lpgInitial:              _toDouble(json['lpg_initial']),
       lpgFinal:                _toDouble(json['lpg_final']),
+      lpg2Initial:              _toDouble(json['lpg2_initial']),
+      lpg2Final:                _toDouble(json['lpg2_final']),
       lpgConsumption:          _toDouble(json['lpg_consumption']),
       electricityInitial:      _toDouble(json['electricity_initial']),
       electricityFinal:        _toDouble(json['electricity_final']),
