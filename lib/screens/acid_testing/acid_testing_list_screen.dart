@@ -530,13 +530,13 @@ class _CountBar extends StatelessWidget {
 // Matches Laravel Blade table columns:
 // Test Date | Lot No | Vehicle | Supplier | In-House Wt | Avg P&F Wt | Pallets | Status | Actions
 // ─────────────────────────────────────────────
-const double _tDate     = 110.0;
+const double _tDate     = 120.0;
 const double _tLotNo    = 130.0;
 const double _tVehicle  = 110.0;
 const double _tSupplier = 160.0;
-const double _tInHouse  = 115.0;
-const double _tAvgPF    = 115.0;
-const double _tPallets  = 80.0;
+const double _tInHouse  = 130.0;
+// const double _tAvgPF    = 115.0;
+const double _tPallets  = 100.0;
 const double _tStatus   = 110.0;
 const double _tActions  = 150.0;
 
@@ -569,7 +569,7 @@ class _RecordsTable extends StatelessWidget {
 
   double get _tableWidth => isTablet
       ? _tDate + _tLotNo + _tVehicle + _tSupplier +
-      _tInHouse + _tAvgPF + _tPallets + _tStatus + _tActions
+      _tInHouse  + _tPallets + _tStatus + _tActions
       : _mDate + _mLotNo + _mStatus + _mActions;
 
   @override
@@ -647,7 +647,7 @@ class _TableHeader extends StatelessWidget {
           _hCell('Vehicle',      _tVehicle),
           _hCell('Supplier',     _tSupplier),
           _hCell('In-House (KG)', _tInHouse, right: true),
-          _hCell('Avg P&F (KG)', _tAvgPF,   right: true),
+          // _hCell('Avg P&F (KG)', _tAvgPF,   right: true),
           _hCell('Pallets',      _tPallets,  center: true),
           _hCell('Status',       _tStatus),
           _hCell('Actions',      _tActions,  center: true),
@@ -870,9 +870,9 @@ class _TableRowState extends State<_TableRow> {
             cell(_tInHouse,
                 txt(fmt.format(r.receivedQty)),
                 right: true),
-            cell(_tAvgPF,
-                txt(fmt.format(r.avgPalletAndForeignWeight)),
-                right: true),
+            // cell(_tAvgPF,
+            //     txt(fmt.format(r.avgPalletAndForeignWeight)),
+            //     right: true),
             cell(_tPallets,
                 _palletBadge(r.palletCount),
                 center: true),

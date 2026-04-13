@@ -364,6 +364,7 @@ class _AcidTestingFormScreenState
       return null;
     }
 
+
     final details = <Map<String, dynamic>>[];
     final errs    = <String>[];
 
@@ -391,6 +392,17 @@ class _AcidTestingFormScreenState
       });
     }
 
+    // ── Top-level required fields ──────────────────────────────────
+    final avgPallet = double.tryParse(_avgPalletCtrl.text);
+    final foreignMaterial = double.tryParse(_foreignCtrl.text);
+
+    if (avgPallet == null || avgPallet <= 0) {
+      errs.add('Avg Pallet Weight is required and must be > 0.');
+    }
+    if (foreignMaterial == null || foreignMaterial < 0) {
+      errs.add('Foreign Material Weight is required.');
+    }
+
     if (errs.isNotEmpty) {
       _showSnack(errs.first, error: true);
       return null;
@@ -401,10 +413,8 @@ class _AcidTestingFormScreenState
       'lot_number':                   _selectedLot!.lotNo,
       'supplier_id':                  _supplierId,
       'vehicle_number':               _vehicleCtrl.text.trim(),
-      'avg_pallet_weight':
-      double.tryParse(_avgPalletCtrl.text) ?? 0,
-      'foreign_material_weight':
-      double.tryParse(_foreignCtrl.text) ?? 0,
+      'avg_pallet_weight':            avgPallet!,
+      'foreign_material_weight':      foreignMaterial!,
       'avg_pallet_and_foreign_weight':
       double.tryParse(_avgPalletForeignCtrl.text) ?? 0,
       'received_qty':

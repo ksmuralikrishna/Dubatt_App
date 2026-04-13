@@ -168,6 +168,31 @@ class ReceivingService {
 
   // ── Load one ────────────────────────────────────────────────────
   Future<ReceivingRecord?> getOne(String id) async {
+    // ── OFFLINE DRAFT INTERCEPT
+    if (id.startsWith('queue_')) {
+      final queueId = int.tryParse(id.substring(6));
+      if (queueId == null) return null;
+      
+      final queueRow = await LocalDbService().getQueueItemById(queueId);
+      if (queueRow == null) return null;
+      
+      final payload = jsonDecode(queueRow['payload'] as String) as Map<String, dynamic>;
+      
+      return ReceivingRecord(
+        id: id,
+        lotNo: payload['lot_no']?.toString() ?? '',
+        docDate: payload['receipt_date']?.toString() ?? '',
+        supplierId: payload['supplier_id']?.toString() ?? '',
+        materialId: payload['material_id']?.toString() ?? '',
+        invoiceQty: _toDouble(payload['invoice_qty']),
+        receiveQty: _toDouble(payload['received_qty']),
+        unit: payload['unit']?.toString() ?? '',
+        vehicleNo: payload['vehicle_number']?.toString() ?? '',
+        remarks: payload['remarks']?.toString() ?? '',
+        status: "0",
+      );
+    }
+
     try {
       final res = await http
           .get(
@@ -267,20 +292,28 @@ class ReceivingService {
   //           List reads sync_queue directly to show pending records
 
   Future<SaveResult> save(Map<String, dynamic> payload, {String? id}) async {
-    // ── OFFLINE path
-    if (!ConnectivityService().isOnline) {
+    final isQueueEdit = id != null && id.startsWith('queue_');
+
+    // ── OFFLINE path (or editing a queue item while online but before sync finishes)
+    if (!ConnectivityService().isOnline || isQueueEdit) {
       try {
-        // Only queue the operation — receiving_records is for server cache only
-        await LocalDbService().addToQueue(SyncOperation(
-          operation: id == null
-              ? SyncOperation.opCreate
-              : SyncOperation.opUpdate,
-          table:     'receivings',
-          serverId:  id,
-          payload:   payload,
-          createdAt: DateTime.now(),
-        ));
-        return const SaveResult(success: true, newId: null);
+        if (isQueueEdit) {
+          final queueId = int.parse(id!.substring(6));
+          await LocalDbService().updateQueuePayload(queueId, payload);
+          return SaveResult(success: true, newId: id);
+        } else {
+          // Only queue the operation — receiving_records is for server cache only
+          await LocalDbService().addToQueue(SyncOperation(
+            operation: id == null
+                ? SyncOperation.opCreate
+                : SyncOperation.opUpdate,
+            table:     'receivings',
+            serverId:  id,
+            payload:   payload,
+            createdAt: DateTime.now(),
+          ));
+          return const SaveResult(success: true, newId: null);
+        }
       } catch (e) {
         return SaveResult.error('Failed to save offline: $e');
       }
@@ -316,6 +349,17 @@ class ReceivingService {
   }
   // ── Delete ──────────────────────────────────────────────────────
   Future<String?> delete(String id) async {
+    // ── OFFLINE DRAFT INTERCEPT
+    if (id.startsWith('queue_')) {
+      try {
+        final queueId = int.parse(id.substring(6));
+        await LocalDbService().deleteQueueItem(queueId);
+        return null;
+      } catch (e) {
+        return 'Failed to delete offline record: $e';
+      }
+    }
+
     try {
       final res = await http.delete(
         Uri.parse('$kBaseUrl/receivings/$id'),
@@ -331,6 +375,10 @@ class ReceivingService {
 
   // ── Submit ──────────────────────────────────────────────────────
   Future<String?> submit(String id) async {
+    if (id.startsWith('queue_')) {
+      return 'Cannot submit an offline draft. Please wait for it to sync to the server first.';
+    }
+
     try {
       final res = await http
           .patch(

@@ -423,7 +423,6 @@ const double _tDate     = 120.0;
 const double _tRotary   = 90.0;
 const double _tStart    = 80.0;
 const double _tEnd      = 80.0;
-const double _tOutMat   = 150.0;
 const double _tOutQty   = 100.0;
 const double _tStatus   = 100.0;
 const double _tActions  = 150.0;
@@ -449,7 +448,7 @@ class _Table extends StatelessWidget {
 
   double get _w => isTablet
       ? _tBatchNo + _tDate + _tRotary + _tStart + _tEnd +
-      _tOutMat + _tOutQty + _tStatus + _tActions
+      _tOutQty + _tStatus + _tActions
       : _mBatchNo + _mDate + _mStatus + _mActions;
 
   @override
@@ -498,7 +497,6 @@ class _Header extends StatelessWidget {
       _h('Rotary',     _tRotary,  center: true),
       _h('Start',      _tStart),
       _h('End',        _tEnd),
-      _h('Output Mat', _tOutMat),
       _h('Qty (KG)',   _tOutQty,  right: true),
       _h('Status',     _tStatus),
       _h('Actions',    _tActions, center: true),
@@ -630,7 +628,6 @@ class _RowState extends State<_Row> {
           cell(_tRotary,  _rotaryBadge(r.rotaryNo), center: true),
           cell(_tStart,   txt(_fmtTime(r.startTime), muted: true)),
           cell(_tEnd,     txt(_fmtTime(r.endTime), muted: true)),
-          cell(_tOutMat,  txt(r.outputMaterialName ?? '—')),
           cell(_tOutQty,  txt(r.outputQty != null ? fmt.format(r.outputQty) : '—'),
               right: true),
           cell(_tStatus,  _statusBadge(r.statusLabel)),

@@ -31,15 +31,14 @@ class BbsuService {
         headers: _headers,
       )
           .timeout(const Duration(seconds: 10));
-      print("STATUS: ${res.statusCode}");
-      print("RAW BODY: ${res.body}");
+
       if (res.statusCode == 200) {
         final body = jsonDecode(res.body);
 
         if (body['status'] == 'ok' && body['data'] is List) {
           final List list = body['data'];
 
-          print("LIST LENGTH: ${list.length}");
+
 
           final options =
           list.map((j) => BbsuLotOption.fromJson(j)).toList();
@@ -249,6 +248,50 @@ class BbsuService {
   }
 
   Future<BbsuRecord?> getOne(String id) async {
+    // ── OFFLINE DRAFT INTERCEPT
+    if (id.startsWith('queue_')) {
+      final queueId = int.tryParse(id.substring(6));
+      if (queueId == null) return null;
+      
+      final queueRow = await LocalDbService().getQueueItemById(queueId);
+      if (queueRow == null) return null;
+      
+      final payload = jsonDecode(queueRow['payload'] as String) as Map<String, dynamic>;
+      
+      final rawInputs = payload['input_details'] as List? ?? [];
+      final inputs = rawInputs.map((d) => BbsuInputDetail.fromJson(d)).toList();
+
+      final rawOutputMat = payload['output_material'] as Map<String, dynamic>? ?? {};
+      final outputs = <String, BbsuOutputDetail>{};
+      for (final kv in rawOutputMat.entries) {
+        final code = kv.key;
+        final data = kv.value;
+        outputs[code] = BbsuOutputDetail(
+           materialCode: code,
+           qty: double.tryParse(data['qty']?.toString() ?? '0') ?? 0,
+           yieldPct: 0,
+        );
+      }
+      
+      BbsuPowerConsumption? power;
+      if (payload['power_consumption'] != null) {
+        power = BbsuPowerConsumption.fromJson(payload['power_consumption'] as Map<String, dynamic>);
+      }
+      
+      return BbsuRecord(
+        id: id,
+        batchNo: payload['batch_no']?.toString() ?? '',
+        docDate: payload['doc_date']?.toString() ?? '',
+        category: payload['category']?.toString() ?? 'BBSU',
+        startTime: payload['start_time']?.toString() ?? '',
+        endTime: payload['end_time']?.toString() ?? '',
+        inputDetails: inputs,
+        outputMaterials: outputs,
+        powerConsumption: power,
+        status: "0",
+      );
+    }
+
     try {
       final res = await http
           .get(
@@ -271,18 +314,26 @@ class BbsuService {
       Map<String, dynamic> payload, {
         String? id,
       }) async {
-    if (!ConnectivityService().isOnline) {
+    final isQueueEdit = id != null && id.startsWith('queue_');
+
+    if (!ConnectivityService().isOnline || isQueueEdit) {
       try {
-        await LocalDbService().addToQueue(SyncOperation(
-          operation: id == null
-              ? SyncOperation.opCreate
-              : SyncOperation.opUpdate,
-          table:     'bbsu-batches',
-          serverId:  id,
-          payload:   payload,
-          createdAt: DateTime.now(),
-        ));
-        return const BbsuSaveResult(success: true, newId: null);
+        if (isQueueEdit) {
+          final queueId = int.parse(id!.substring(6));
+          await LocalDbService().updateQueuePayload(queueId, payload);
+          return BbsuSaveResult(success: true, newId: id);
+        } else {
+          await LocalDbService().addToQueue(SyncOperation(
+            operation: id == null
+                ? SyncOperation.opCreate
+                : SyncOperation.opUpdate,
+            table:     'bbsu-batches',
+            serverId:  id,
+            payload:   payload,
+            createdAt: DateTime.now(),
+          ));
+          return const BbsuSaveResult(success: true, newId: null);
+        }
       } catch (e) {
         return BbsuSaveResult.error('Network error: ${e.toString()}');
       }
@@ -326,6 +377,10 @@ class BbsuService {
   }
 
   Future<String?> submit(String id) async {
+    if (id.startsWith('queue_')) {
+      return 'Cannot submit an offline draft. Please wait for it to sync to the server first.';
+    }
+
     try {
       final res = await http
           .patch(
@@ -344,6 +399,16 @@ class BbsuService {
   }
 
   Future<String?> delete(String id) async {
+    if (id.startsWith('queue_')) {
+      try {
+        final queueId = int.parse(id.substring(6));
+        await LocalDbService().deleteQueueItem(queueId);
+        return null;
+      } catch (e) {
+        return 'Failed to delete offline record: $e';
+      }
+    }
+
     try {
       final res = await http
           .delete(

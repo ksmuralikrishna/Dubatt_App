@@ -380,7 +380,6 @@ class _OfflineBanner extends StatelessWidget {
 // ─────────────────────────────────────────────
 const double _tBatch   = 180.0;
 const double _tPot     = 100.0;
-const double _tMat     = 140.0;
 const double _tDate    = 100.0;
 const double _tLpg     = 110.0;
 const double _tElec    = 120.0;
@@ -407,7 +406,7 @@ class _Table extends StatelessWidget {
   });
 
   double get _w => isTablet
-      ? _tBatch + _tPot + _tMat + _tDate + _tLpg + _tElec + _tStatus + _tActions
+      ? _tBatch + _tPot + _tDate + _tLpg + _tElec + _tStatus + _tActions
       : _mBatch + _mDate + _mStatus + _mActions;
 
   @override
@@ -453,7 +452,6 @@ class _Header extends StatelessWidget {
         ? [
       _h('Batch No',   _tBatch),
       _h('Pot No',     _tPot),
-      _h('Material',   _tMat),
       _h('Date',       _tDate),
       _h('LPG (m³)',   _tLpg,    right: true),
       _h('Elec (kWh)', _tElec,   right: true),
@@ -568,7 +566,6 @@ class _RowState extends State<_Row> {
             ? [
           cell(_tBatch,  _batchWidget(r)),
           cell(_tPot,    txt(r.potNo ?? '—', muted: true)),
-          cell(_tMat,    txt(r.materialName ?? '—')),
           cell(_tDate,   txt(_fmtDate(r.date), muted: true)),
           cell(_tLpg,
               txt(r.lpgConsumption != null

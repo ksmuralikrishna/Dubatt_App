@@ -29,10 +29,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
   bool _isLoading = true;
 
   // Stats
-  int _receivingToday = 0;
-  int _pendingSync    = 0;
-  int _submittedToday = 0;
-  int _activeLots     = 0;
+  int _activeSuppliers = 0;
+  int _activeMaterials = 0;
 
   StreamSubscription<SyncState>? _syncSub;
 
@@ -146,26 +144,35 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   // ── Online: load stats from API ────────────────────────────────
+  // Future<void> _loadStatsHidden() async {
+  //   try {
+  //     final res = await http.get(
+  //       Uri.parse('${kBaseUrl}/dashboard/stats'),
+  //       headers: {
+  //         'Accept': 'application/json',
+  //         'Authorization': 'Bearer ${AuthService().token}',
+  //       },
+  //     ).timeout(const Duration(seconds: 8));
+  //     if (res.statusCode == 200) {
+  //       final data = jsonDecode(res.body)['data'] ?? {};
+  //       final materials = await LocalDbService().getCachedMaterials();
+  //       final suppliers = await LocalDbService().getCachedSuppliers();
+  //       setState(() {
+  //         _activeMaterials = materials.length;
+  //         _activeSuppliers = suppliers.length;
+  //       });
+  //     }
+  //   } catch (_) {}
+  // }
   Future<void> _loadStats() async {
     try {
-      final res = await http.get(
-        Uri.parse('${kBaseUrl}/dashboard/stats'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer ${AuthService().token}',
-        },
-      ).timeout(const Duration(seconds: 8));
-      if (res.statusCode == 200) {
-        final data = jsonDecode(res.body)['data'] ?? {};
-        // Merge pending count from local queue on top of server stats
-        final localPending = await LocalDbService().getPendingCount();
+        final materials = await LocalDbService().getCachedMaterials();
+        final suppliers = await LocalDbService().getCachedSuppliers();
         setState(() {
-          _receivingToday = data['receiving_today'] ?? 0;
-          _pendingSync    = localPending;              // ✅ use local queue count
-          _submittedToday = data['submitted_today'] ?? 0;
-          _activeLots     = data['active_lots']     ?? 0;
+          _activeMaterials = materials.length;
+          _activeSuppliers = suppliers.length;
         });
-      }
+
     } catch (_) {}
   }
 
@@ -192,20 +199,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
   // ── Offline: load from local SQLite ───────────────────────────
   Future<void> _loadLocalData() async {
     final localRows = await LocalDbService().getLocalReceivings();
-    final pending   = await LocalDbService().getPendingCount();
+    final materials = await LocalDbService().getCachedMaterials();
+    final suppliers = await LocalDbService().getCachedSuppliers();
 
     setState(() {
-      _pendingSync   = pending;
-      _activeLots    = localRows.length;
-      _receivingToday = localRows
-          .where((r) {
-        final created = r['created_at'] as String? ?? '';
-        return created.startsWith(
-          DateTime.now().toIso8601String().substring(0, 10),
-        );
-      })
-          .length;
-      _submittedToday = 0; // unknown offline
+      _activeMaterials = materials.length;
+      _activeSuppliers = suppliers.length;
 
       // Map local DB rows to the same shape as API records
       _recentRecords = localRows.take(5).map((r) => {
@@ -324,10 +323,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     ? _StatsGridShimmer(isTablet: isTablet)
                     : _StatsGrid(
                   isTablet: isTablet,
-                  receivingToday: _receivingToday,
-                  pendingSync: _pendingSync,
-                  submittedToday: _submittedToday,
-                  activeLots: _activeLots,
+                  activeSuppliers: _activeSuppliers,
+                  activeMaterials: _activeMaterials,
                 ),
                 const SizedBox(height: 24),
 
@@ -336,61 +333,61 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   _SyncErrorsBanner(errors: SyncService().errors),
 
                 // ── Quick actions ──────────────────────────────
-                _SectionTitle(title: 'Quick Actions'),
-                const SizedBox(height: 12),
-                _QuickActions(
-                  isTablet: isTablet,
-                  onCreateReceiving: () =>
-                      Navigator.of(context).pushNamed('/receiving/create'),
-                  onViewReceiving: () =>
-                      Navigator.of(context).pushReplacementNamed('/receiving'),
-                ),
-                const SizedBox(height: 28),
+                // _SectionTitle(title: 'Quick Actions'),
+                // const SizedBox(height: 12),
+                // _QuickActions(
+                //   isTablet: isTablet,
+                //   onCreateReceiving: () =>
+                //       Navigator.of(context).pushNamed('/receiving/create'),
+                //   onViewReceiving: () =>
+                //       Navigator.of(context).pushReplacementNamed('/receiving'),
+                // ),
+                // const SizedBox(height: 28),
 
                 // ── Recent records ─────────────────────────────
-                MesCard(
-                  padding: EdgeInsets.zero,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(22, 18, 16, 0),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.history,
-                                size: 16, color: AppColors.green),
-                            const SizedBox(width: 8),
-                            Text('Recent Receiving',
-                                style: AppTextStyles.subheading()),
-                            const Spacer(),
-                            TextButton(
-                              onPressed: () => Navigator.of(context)
-                                  .pushReplacementNamed('/receiving'),
-                              style: TextButton.styleFrom(
-                                foregroundColor: AppColors.green,
-                                textStyle: GoogleFonts.outfit(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                              child: const Text('View All →'),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      const Divider(height: 1, color: AppColors.borderLight),
-                      _isLoading
-                          ? _TableShimmer()
-                          : _recentRecords.isEmpty
-                          ? _EmptyState()
-                          : _RecentTable(
-                        records: _recentRecords,
-                        isTablet: isTablet,
-                      ),
-                    ],
-                  ),
-                ),
+                // MesCard(
+                //   padding: EdgeInsets.zero,
+                //   child: Column(
+                //     crossAxisAlignment: CrossAxisAlignment.start,
+                //     children: [
+                //       Padding(
+                //         padding: const EdgeInsets.fromLTRB(22, 18, 16, 0),
+                //         child: Row(
+                //           children: [
+                //             const Icon(Icons.history,
+                //                 size: 16, color: AppColors.green),
+                //             const SizedBox(width: 8),
+                //             Text('Recent Receiving',
+                //                 style: AppTextStyles.subheading()),
+                //             const Spacer(),
+                //             TextButton(
+                //               onPressed: () => Navigator.of(context)
+                //                   .pushReplacementNamed('/receiving'),
+                //               style: TextButton.styleFrom(
+                //                 foregroundColor: AppColors.green,
+                //                 textStyle: GoogleFonts.outfit(
+                //                   fontSize: 13,
+                //                   fontWeight: FontWeight.w600,
+                //                 ),
+                //               ),
+                //               child: const Text('View All →'),
+                //             ),
+                //           ],
+                //         ),
+                //       ),
+                //       const SizedBox(height: 4),
+                //       const Divider(height: 1, color: AppColors.borderLight),
+                //       _isLoading
+                //           ? _TableShimmer()
+                //           : _recentRecords.isEmpty
+                //           ? _EmptyState()
+                //           : _RecentTable(
+                //         records: _recentRecords,
+                //         isTablet: isTablet,
+                //       ),
+                //     ],
+                //   ),
+                // ),
               ],
             ),
           ),
@@ -637,46 +634,30 @@ class _SectionTitle extends StatelessWidget {
 // ─────────────────────────────────────────────
 class _StatsGrid extends StatelessWidget {
   final bool isTablet;
-  final int receivingToday, pendingSync, submittedToday, activeLots;
+  final int activeSuppliers, activeMaterials;
 
   const _StatsGrid({
     required this.isTablet,
-    required this.receivingToday,
-    required this.pendingSync,
-    required this.submittedToday,
-    required this.activeLots,
+    required this.activeSuppliers,
+    required this.activeMaterials,
   });
 
   @override
   Widget build(BuildContext context) {
     final stats = [
       _StatData(
-        label: 'Receiving Today',
-        value: '$receivingToday',
-        subLabel: 'lots today',
-        icon: Icons.inventory_2_outlined,
+        label: 'Active Suppliers',
+        value: '$activeSuppliers',
+        subLabel: 'total suppliers',
+        icon: Icons.local_shipping_outlined,
         accentColor: AppColors.green,
       ),
       _StatData(
-        label: 'Pending Sync',
-        value: '$pendingSync',
-        subLabel: pendingSync > 0 ? 'awaiting sync' : 'all synced',
-        icon: Icons.sync_outlined,
-        accentColor: pendingSync > 0 ? AppColors.warning : AppColors.green,
-      ),
-      _StatData(
-        label: 'Submitted Today',
-        value: '$submittedToday',
-        subLabel: 'submitted',
-        icon: Icons.check_circle_outline,
+        label: 'Active Materials',
+        value: '$activeMaterials',
+        subLabel: 'total materials',
+        icon: Icons.inventory_2_outlined,
         accentColor: const Color(0xFF0891b2),
-      ),
-      _StatData(
-        label: 'Active Lots',
-        value: '$activeLots',
-        subLabel: 'total active',
-        icon: Icons.layers_outlined,
-        accentColor: const Color(0xFF7c3aed),
       ),
     ];
 
@@ -830,10 +811,10 @@ class _StatsGridShimmerState extends State<_StatsGridShimmer>
         if (widget.isTablet) {
           return Row(
             children: List.generate(
-              4,
+              2,
                   (i) => Expanded(
                 child: Padding(
-                  padding: EdgeInsets.only(right: i < 3 ? 16 : 0),
+                  padding: EdgeInsets.only(right: i < 1 ? 16 : 0),
                   child: shimmer,
                 ),
               ),
@@ -847,7 +828,7 @@ class _StatsGridShimmerState extends State<_StatsGridShimmer>
           crossAxisSpacing: 14,
           mainAxisSpacing: 14,
           childAspectRatio: 1.5,
-          children: List.generate(4, (_) => shimmer),
+          children: List.generate(2, (_) => shimmer),
         );
       },
     );

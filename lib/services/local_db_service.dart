@@ -301,7 +301,7 @@ class LocalDbService {
         // Optional: Keep onUpgrade minimal for development
         onUpgrade: (db, oldVersion, newVersion) async {
           // For development, you can keep this empty or just log
-          print('Database upgraded from $oldVersion to $newVersion');
+
           // If you ever need to add migrations later, add them here
         }
     );
@@ -514,6 +514,25 @@ class LocalDbService {
       'SELECT COUNT(*) as count FROM sync_queue',
     );
     return result.first['count'] as int;
+  }
+
+  Future<Map<String, dynamic>?> getQueueItemById(int targetId) async {
+    final rows = await db.query(
+      'sync_queue',
+      where: 'id = ?',
+      whereArgs: [targetId],
+    );
+    if (rows.isEmpty) return null;
+    return rows.first;
+  }
+
+  Future<void> updateQueuePayload(int targetId, Map<String, dynamic> payload) async {
+    await db.update(
+      'sync_queue',
+      {'payload': jsonEncode(payload)},
+      where: 'id = ?',
+      whereArgs: [targetId],
+    );
   }
 
   // ── Acid Testing: cache server records ───────────────────────────────────

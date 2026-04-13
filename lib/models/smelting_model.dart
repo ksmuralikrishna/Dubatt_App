@@ -442,6 +442,58 @@ class SmeltingRecord {
     'temperature_records':     temperatureRecords.map((t) => t.toJson()).toList(),
   };
 
+  SmeltingRecord copyWith({
+    String? id,
+    String? batchNo,
+    String? date,
+    String? rotaryNo,
+    String? chargeNo,
+    String? startTime,
+    String? endTime,
+    double? lpgConsumption,
+    double? o2Consumption,
+    double? idFanInitial,
+    double? idFanFinal,
+    double? idFanConsumption,
+    double? rotaryPowerInitial,
+    double? rotaryPowerFinal,
+    double? rotaryPowerConsumption,
+    String? outputMaterial,
+    double? outputQty,
+    List<Map<String, dynamic>>? outputBlocks,
+    List<SmeltingRawMaterial>? rawMaterials,
+    List<SmeltingFluxChemical>? fluxChemicals,
+    List<SmeltingProcessDetail>? processDetails,
+    List<SmeltingTempRecord>? temperatureRecords,
+    String? status,
+  }) {
+    return SmeltingRecord(
+      id: id ?? this.id,
+      batchNo: batchNo ?? this.batchNo,
+      date: date ?? this.date,
+      rotaryNo: rotaryNo ?? this.rotaryNo,
+      chargeNo: chargeNo ?? this.chargeNo,
+      startTime: startTime ?? this.startTime,
+      endTime: endTime ?? this.endTime,
+      lpgConsumption: lpgConsumption ?? this.lpgConsumption,
+      o2Consumption: o2Consumption ?? this.o2Consumption,
+      idFanInitial: idFanInitial ?? this.idFanInitial,
+      idFanFinal: idFanFinal ?? this.idFanFinal,
+      idFanConsumption: idFanConsumption ?? this.idFanConsumption,
+      rotaryPowerInitial: rotaryPowerInitial ?? this.rotaryPowerInitial,
+      rotaryPowerFinal: rotaryPowerFinal ?? this.rotaryPowerFinal,
+      rotaryPowerConsumption: rotaryPowerConsumption ?? this.rotaryPowerConsumption,
+      outputMaterial: outputMaterial ?? this.outputMaterial,
+      outputQty: outputQty ?? this.outputQty,
+      outputBlocks: outputBlocks ?? this.outputBlocks,
+      rawMaterials: rawMaterials ?? this.rawMaterials,
+      fluxChemicals: fluxChemicals ?? this.fluxChemicals,
+      processDetails: processDetails ?? this.processDetails,
+      temperatureRecords: temperatureRecords ?? this.temperatureRecords,
+      status: status ?? this.status,
+    );
+  }
+
   static double? _toDouble(dynamic v) {
     if (v == null) return null;
     if (v is double) return v;

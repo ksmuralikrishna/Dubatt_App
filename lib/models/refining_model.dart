@@ -495,6 +495,58 @@ class RefiningRecord {
         .expand((d) => d.outputBlocks.map((b) => b.toJson())).toList(),
   };
 
+  RefiningRecord copyWith({
+    String? id,
+    String? batchNo,
+    String? potNo,
+    String? materialId,
+    String? date,
+    double? lpgInitial,
+    double? lpgFinal,
+    double? lpg2Initial,
+    double? lpg2Final,
+    double? lpgConsumption,
+    double? electricityInitial,
+    double? electricityFinal,
+    double? electricityConsumption,
+    double? oxygenFlowNm3,
+    double? oxygenFlowKg,
+    double? oxygenFlowTime,
+    double? oxygenConsumption,
+    List<RefiningRawMaterial>? rawMaterials,
+    List<RefiningChemical>? chemicals,
+    List<RefiningProcessDetail>? processDetails,
+    List<RefiningFinishedGood>? finishedGoodsSummary,
+    List<RefiningDross>? drossSummary,
+    String? status,
+  }) {
+    return RefiningRecord(
+      id: id ?? this.id,
+      batchNo: batchNo ?? this.batchNo,
+      potNo: potNo ?? this.potNo,
+      materialId: materialId ?? this.materialId,
+      date: date ?? this.date,
+      lpgInitial: lpgInitial ?? this.lpgInitial,
+      lpgFinal: lpgFinal ?? this.lpgFinal,
+      lpg2Initial: lpg2Initial ?? this.lpg2Initial,
+      lpg2Final: lpg2Final ?? this.lpg2Final,
+      lpgConsumption: lpgConsumption ?? this.lpgConsumption,
+      electricityInitial: electricityInitial ?? this.electricityInitial,
+      electricityFinal: electricityFinal ?? this.electricityFinal,
+      electricityConsumption: electricityConsumption ?? this.electricityConsumption,
+      oxygenFlowNm3: oxygenFlowNm3 ?? this.oxygenFlowNm3,
+      oxygenFlowKg: oxygenFlowKg ?? this.oxygenFlowKg,
+      oxygenFlowTime: oxygenFlowTime ?? this.oxygenFlowTime,
+      oxygenConsumption: oxygenConsumption ?? this.oxygenConsumption,
+      rawMaterials: rawMaterials ?? this.rawMaterials,
+      chemicals: chemicals ?? this.chemicals,
+      processDetails: processDetails ?? this.processDetails,
+      finishedGoodsSummary: finishedGoodsSummary ?? this.finishedGoodsSummary,
+      drossSummary: drossSummary ?? this.drossSummary,
+      status: status ?? this.status,
+    );
+  }
+
   static double? _toDouble(dynamic v) {
     if (v == null) return null;
     if (v is double) return v;

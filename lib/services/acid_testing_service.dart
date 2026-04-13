@@ -197,6 +197,34 @@ class AcidTestingService {
   // ── Load one ────────────────────────────────────────────────────────────────
 
   Future<AcidTestingRecord?> getOne(String id) async {
+    // ── OFFLINE DRAFT INTERCEPT
+    if (id.startsWith('queue_')) {
+      final queueId = int.tryParse(id.substring(6));
+      if (queueId == null) return null;
+      
+      final queueRow = await LocalDbService().getQueueItemById(queueId);
+      if (queueRow == null) return null;
+      
+      final payload = jsonDecode(queueRow['payload'] as String) as Map<String, dynamic>;
+      final rawDetails = payload['details'] as List? ?? [];
+      
+      return AcidTestingRecord(
+        id: id,
+        testDate: payload['test_date']?.toString() ?? '',
+        lotNumber: payload['lot_number']?.toString() ?? '',
+        supplierId: payload['supplier_id']?.toString() ?? '',
+        supplierName: payload['supplier_name']?.toString() ?? '',
+        vehicleNumber: payload['vehicle_number']?.toString() ?? '',
+        avgPalletWeight: _toDouble(payload['avg_pallet_weight']) ?? 0,
+        foreignMaterialWeight: _toDouble(payload['foreign_material_weight']) ?? 0,
+        avgPalletAndForeignWeight: _toDouble(payload['avg_pallet_and_foreign_weight']) ?? 0,
+        receivedQty: _toDouble(payload['received_qty']),
+        invoiceQty: _toDouble(payload['invoice_qty']),
+        details: rawDetails.map((d) => AcidTestingDetail.fromJson(d)).toList(),
+        status: "0",
+      );
+    }
+
     try {
       final res = await http
           .get(
@@ -226,8 +254,10 @@ class AcidTestingService {
         String? id,
         String? supplierName, // pass so offline list shows supplier name
       }) async {
-    // ── OFFLINE path ──────────────────────────────────────────────────────────
-    if (!ConnectivityService().isOnline) {
+    final isQueueEdit = id != null && id.startsWith('queue_');
+
+    // ── OFFLINE path (or editing a queue item while online but before sync finishes)
+    if (!ConnectivityService().isOnline || isQueueEdit) {
       try {
         // Embed supplier_name in payload for offline list display
         final offlinePayload = {
@@ -235,16 +265,22 @@ class AcidTestingService {
           if (supplierName != null) 'supplier_name': supplierName,
         };
 
-        await LocalDbService().addToQueue(SyncOperation(
-          operation: id == null
-              ? SyncOperation.opCreate
-              : SyncOperation.opUpdate,
-          table:     'acid-testings',
-          serverId:  id,
-          payload:   offlinePayload,
-          createdAt: DateTime.now(),
-        ));
-        return const AcidSaveResult(success: true, newId: null);
+        if (isQueueEdit) {
+          final queueId = int.parse(id!.substring(6));
+          await LocalDbService().updateQueuePayload(queueId, offlinePayload);
+          return AcidSaveResult(success: true, newId: id);
+        } else {
+          await LocalDbService().addToQueue(SyncOperation(
+            operation: id == null
+                ? SyncOperation.opCreate
+                : SyncOperation.opUpdate,
+            table:     'acid-testings',
+            serverId:  id,
+            payload:   offlinePayload,
+            createdAt: DateTime.now(),
+          ));
+          return const AcidSaveResult(success: true, newId: null);
+        }
       } catch (e) {
         return AcidSaveResult.error('Failed to save offline: $e');
       }
@@ -287,6 +323,10 @@ class AcidTestingService {
   // Must be online — submit locks the record server-side.
 
   Future<String?> submit(String id) async {
+    if (id.startsWith('queue_')) {
+      return 'Cannot submit an offline draft. Please wait for it to sync to the server first.';
+    }
+
     try {
       final res = await http
           .patch(
@@ -307,6 +347,17 @@ class AcidTestingService {
   // ── Delete ─────────────────────────────────────────────────────────────────
 
   Future<String?> delete(String id) async {
+    // ── OFFLINE DRAFT INTERCEPT
+    if (id.startsWith('queue_')) {
+      try {
+        final queueId = int.parse(id.substring(6));
+        await LocalDbService().deleteQueueItem(queueId);
+        return null;
+      } catch (e) {
+        return 'Failed to delete offline record: $e';
+      }
+    }
+
     try {
       final res = await http
           .delete(

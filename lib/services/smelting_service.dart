@@ -279,6 +279,19 @@ class SmeltingService {
   // ── Load one ────────────────────────────────────────────────────────────────
 
   Future<SmeltingRecord?> getOne(String id) async {
+    // ── OFFLINE DRAFT INTERCEPT
+    if (id.startsWith('queue_')) {
+      final queueId = int.tryParse(id.substring(6));
+      if (queueId == null) return null;
+      
+      final queueRow = await LocalDbService().getQueueItemById(queueId);
+      if (queueRow == null) return null;
+      
+      final payload = jsonDecode(queueRow['payload'] as String) as Map<String, dynamic>;
+      
+      return SmeltingRecord.fromJson(payload).copyWith(id: id, status: "0");
+    }
+
     try {
       final res = await http
           .get(Uri.parse('$kBaseUrl/smelting-batches/$id'),
@@ -303,18 +316,26 @@ class SmeltingService {
       Map<String, dynamic> payload, {
         String? id,
       }) async {
-    if (!ConnectivityService().isOnline) {
+    final isQueueEdit = id != null && id.startsWith('queue_');
+
+    if (!ConnectivityService().isOnline || isQueueEdit) {
       try {
-        await LocalDbService().addToQueue(SyncOperation(
-          operation: id == null
-              ? SyncOperation.opCreate
-              : SyncOperation.opUpdate,
-          table:     'smelting-batches',
-          serverId:  id,
-          payload:   payload,
-          createdAt: DateTime.now(),
-        ));
-        return const SmeltingSaveResult(success: true, newId: null);
+        if (isQueueEdit) {
+          final queueId = int.parse(id!.substring(6));
+          await LocalDbService().updateQueuePayload(queueId, payload);
+          return SmeltingSaveResult(success: true, newId: id);
+        } else {
+          await LocalDbService().addToQueue(SyncOperation(
+            operation: id == null
+                ? SyncOperation.opCreate
+                : SyncOperation.opUpdate,
+            table:     'smelting-batches',
+            serverId:  id,
+            payload:   payload,
+            createdAt: DateTime.now(),
+          ));
+          return const SmeltingSaveResult(success: true, newId: null);
+        }
       } catch (e) {
         return SmeltingSaveResult.error('Failed to save offline: $e');
       }
@@ -350,6 +371,10 @@ class SmeltingService {
   // ── Submit (POST /smelting-batches/:id/submit) ──────────────────────────────
 
   Future<String?> submit(String id) async {
+    if (id.startsWith('queue_')) {
+      return 'Cannot submit an offline draft. Please wait for it to sync to the server first.';
+    }
+
     try {
       final res = await http
           .post(Uri.parse('$kBaseUrl/smelting-batches/$id/submit'),
@@ -365,6 +390,16 @@ class SmeltingService {
   // ── Delete ──────────────────────────────────────────────────────────────────
 
   Future<String?> delete(String id) async {
+    if (id.startsWith('queue_')) {
+      try {
+        final queueId = int.parse(id.substring(6));
+        await LocalDbService().deleteQueueItem(queueId);
+        return null;
+      } catch (e) {
+        return 'Failed to delete offline record: $e';
+      }
+    }
+
     try {
       final res = await http
           .delete(Uri.parse('$kBaseUrl/smelting-batches/$id'),

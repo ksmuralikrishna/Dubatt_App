@@ -255,9 +255,11 @@ class _Sidebar extends StatelessWidget {
 
     return Container(
       color: AppColors.greenDark,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+      child: SafeArea(
+        bottom: false,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
 
           // ── Header: hamburger + logo ───────────────────────────
           Container(
@@ -462,6 +464,7 @@ class _Sidebar extends StatelessWidget {
           ),
         ],
       ),
+    ),
     );
   }
 

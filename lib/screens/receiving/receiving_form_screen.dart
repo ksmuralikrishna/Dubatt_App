@@ -131,6 +131,16 @@ class _ReceivingFormScreenState extends State<ReceivingFormScreen> {
       _dateCtrl.text = DateFormat('yyyy-MM-dd').format(picked);
     }
   }
+  String? _validate() {
+    if (_dateCtrl.text.trim().isEmpty)       return 'Receipt date is required.';
+    if (_lotCtrl.text.trim().isEmpty)        return 'Lot number is required.';
+    if (_vehicleCtrl.text.trim().isEmpty)    return 'Vehicle number is required.';
+    if (_selectedSupplier == null)           return 'Supplier is required.';
+    if (_selectedMaterial == null)           return 'Material is required.';
+    if (_invoiceQtyCtrl.text.trim().isEmpty) return 'Invoice quantity is required.';
+    if (_receiveQtyCtrl.text.trim().isEmpty) return 'Received quantity is required.';
+    return null;
+  }
 
   Map<String, dynamic> _buildPayload() => {
     'receipt_date':  _dateCtrl.text.trim(),
@@ -146,6 +156,11 @@ class _ReceivingFormScreenState extends State<ReceivingFormScreen> {
 
   // ── Save ────────────────────────────────────────────────────────
   Future<void> _save() async {
+    final error = _validate();
+    if (error != null) {
+      _showSnack(error, error: true);
+      return;
+    }
     setState(() {
       _isSaving    = true;
       _fieldErrors = {};
