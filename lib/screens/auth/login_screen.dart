@@ -13,7 +13,7 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen>
     with SingleTickerProviderStateMixin {
-  final _emailCtrl    = TextEditingController();
+  final _loginCtrl    = TextEditingController();
   final _passwordCtrl = TextEditingController();
   final _formKey      = GlobalKey<FormState>();
 
@@ -40,7 +40,7 @@ class _LoginScreenState extends State<LoginScreen>
   @override
   void dispose() {
     _animCtrl.dispose();
-    _emailCtrl.dispose();
+    _loginCtrl.dispose();
     _passwordCtrl.dispose();
     super.dispose();
   }
@@ -51,7 +51,7 @@ class _LoginScreenState extends State<LoginScreen>
     setState(() => _isLoading = true);
 
     final result = await AuthService().login(
-      _emailCtrl.text.trim(),
+      _loginCtrl.text.trim(),
       _passwordCtrl.text,
     );
 
@@ -216,19 +216,16 @@ class _LoginScreenState extends State<LoginScreen>
                                       const SizedBox(height: 20),
                                     ],
 
-                                    // Email field
+                                    // Login field
                                     _LoginField(
-                                      label: 'Email Address',
-                                      hint: 'you@company.com',
-                                      controller: _emailCtrl,
-                                      prefixIcon: Icons.email_outlined,
+                                      label: 'Email or Username',
+                                      hint: 'you@company.com or username',
+                                      controller: _loginCtrl,
+                                      prefixIcon: Icons.person_outline,
                                       keyboardType: TextInputType.emailAddress,
                                       validator: (v) {
                                         if (v == null || v.trim().isEmpty) {
-                                          return 'Email is required';
-                                        }
-                                        if (!v.contains('@')) {
-                                          return 'Enter a valid email address';
+                                          return 'Email or username is required';
                                         }
                                         return null;
                                       },

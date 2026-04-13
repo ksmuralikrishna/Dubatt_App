@@ -299,8 +299,6 @@ class SmeltingService {
           .timeout(const Duration(seconds: 12));
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body)['data'];
-        print("DATA: $data");
-
         return SmeltingRecord.fromJson(data);
         // return SmeltingRecord.fromJson(jsonDecode(res.body)['data']);
       }

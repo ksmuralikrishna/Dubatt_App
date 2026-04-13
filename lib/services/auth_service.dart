@@ -31,14 +31,14 @@ class AuthService {
     if (_token != null) 'Authorization': 'Bearer $_token',
   };
 
-  Future<LoginResult> login(String email, String password) async {
+  Future<LoginResult> login(String loginIdentifier, String password) async {
     print('Trying to login...');
-    print('POST $kBaseUrl/auth/login with $email / $password');
+    print('POST $kBaseUrl/auth/login with $loginIdentifier / $password');
     try {
       final res = await http.post(
         Uri.parse('$kBaseUrl/auth/login'),
         headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
-        body: jsonEncode({'login': email, 'password': password}),
+        body: jsonEncode({'login': loginIdentifier, 'password': password}),
       ).timeout(const Duration(seconds: 15));
       print('Response: ${res.statusCode} - ${res.body}');
       final data = jsonDecode(res.body);
@@ -54,7 +54,7 @@ class AuthService {
         final msg = errors?.values.first?[0] ?? data['message'] ?? 'Validation failed.';
         return LoginResult.failure(msg);
       } else if (res.statusCode == 401) {
-        return LoginResult.failure('Invalid email or password.');
+        return LoginResult.failure('Invalid email, username, or password.');
       } else {
         return LoginResult.failure(data['message'] ?? 'Login failed. Please try again.');
       }

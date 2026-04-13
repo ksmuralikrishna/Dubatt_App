@@ -97,7 +97,7 @@ class _ReceivingFormScreenState extends State<ReceivingFormScreen> {
 
     _currentId            = record.id;
     _lotCtrl.text         = record.lotNo;
-    _dateCtrl.text        = record.docDate;
+    _dateCtrl.text        = _formatDate(record.docDate);
     _selectedSupplier     = record.supplierId;
     _selectedMaterial     = record.materialId;
     _invoiceQtyCtrl.text  = record.invoiceQty?.toString() ?? '';
@@ -107,7 +107,16 @@ class _ReceivingFormScreenState extends State<ReceivingFormScreen> {
     _remarksCtrl.text     = record.remarks ?? '';
     _isSubmitted          = record.status != "0";
   }
-
+  String _formatDate(String isoDateString) {
+    try {
+      // Parse the ISO string to DateTime
+      DateTime dateTime = DateTime.parse(isoDateString);
+      // Format as YYYY-MM-DD
+      return '${dateTime.year}-${dateTime.month.toString().padLeft(2, '0')}-${dateTime.day.toString().padLeft(2, '0')}';
+    } catch (e) {
+      return isoDateString; // Fallback to original if parsing fails
+    }
+  }
   Future<void> _pickDate() async {
     final initial = DateTime.tryParse(_dateCtrl.text) ?? DateTime.now();
     final picked  = await showDatePicker(
