@@ -109,12 +109,14 @@ class BbsuInputDetail {
   final String lotNo;
   final double quantity;
   final double acidPercentage;
+  final Map<String, double>? materialBreakdown;
 
   const BbsuInputDetail({
     this.id,
     required this.lotNo,
     required this.quantity,
     required this.acidPercentage,
+    required this.materialBreakdown,
   });
 
   factory BbsuInputDetail.fromJson(Map<String, dynamic> json) {
@@ -123,6 +125,9 @@ class BbsuInputDetail {
       lotNo:          json['lot_no']?.toString() ?? '',
       quantity:       _toDouble(json['quantity']) ?? 0,
       acidPercentage: _toDouble(json['acid_percentage']) ?? 0,
+      materialBreakdown: (json['material_breakdown'] as Map?)?.map(
+            (k, v) => MapEntry(k.toString(), _toDouble(v) ?? 0),
+      ),
     );
   }
 
@@ -144,6 +149,7 @@ class BbsuInputDetail {
       lotNo:          lotNo          ?? this.lotNo,
       quantity:       quantity       ?? this.quantity,
       acidPercentage: acidPercentage ?? this.acidPercentage,
+      materialBreakdown: materialBreakdown ?? this.materialBreakdown,
     );
   }
 

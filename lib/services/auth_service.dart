@@ -2,7 +2,8 @@ import 'dart:convert';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 
-const String kBaseUrl = 'http://192.168.2.227:8000/api';
+ const String kBaseUrl = 'http://192.168.2.227:8000/api';
+// const String kBaseUrl = 'http://192.168.151.7:8000/api'; // Dubatt IP
 
 class AuthService {
   static final AuthService _instance = AuthService._internal();

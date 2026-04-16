@@ -171,6 +171,7 @@ class _BbsuFormScreenState extends State<BbsuFormScreen> {
       lotNo:   detail?.lotNo ?? '',
       qty:     detail?.quantity ?? 0,
       acidPct: detail?.acidPercentage ?? 0,
+      breakdown: detail?.materialBreakdown ?? {},
     ));
     _recalcInputTotals();
     if (!_isLoading) setState(() {});
@@ -296,10 +297,11 @@ class _BbsuFormScreenState extends State<BbsuFormScreen> {
         fallbackQty: lotInfo.receivedQty,
         existingQty: row.assignedQty,
         isOffline:   !ConnectivityService().isOnline,
-        onConfirm: (qty, acid) {
+        onConfirm: (qty, acid, breakdown) {
           setState(() {
             row.assignedQty   = qty;
             row.acidCtrl.text = acid.toStringAsFixed(3);
+            row.materialBreakdown  = breakdown;
           });
           _recalcInputTotals();
         },
@@ -320,6 +322,7 @@ class _BbsuFormScreenState extends State<BbsuFormScreen> {
         'lot_no':          r.selectedLotNo,
         'quantity':        r.assignedQty,
         'acid_percentage': double.tryParse(r.acidCtrl.text) ?? 0,
+        'material_breakdown':   r.materialBreakdown.isNotEmpty ? r.materialBreakdown : null,
       });
     }
 
@@ -690,11 +693,19 @@ class _InputRowData {
   String selectedLotNo;
   double assignedQty;
   final TextEditingController acidCtrl;
+  Map<String, double> materialBreakdown; // ← add this
 
-  _InputRowData({required this.lots, required String lotNo, required double qty, required double acidPct})
-      : selectedLotNo = lotNo,
-        assignedQty   = qty,
-        acidCtrl      = TextEditingController(text: acidPct > 0 ? acidPct.toStringAsFixed(3) : '');
+  _InputRowData({
+    required this.lots,
+    required String lotNo,
+    required double qty,
+    required double acidPct,
+    Map<String, double>? breakdown,      // ← add this
+  })  : selectedLotNo    = lotNo,
+        assignedQty      = qty,
+        materialBreakdown = breakdown ?? {},
+        acidCtrl         = TextEditingController(
+            text: acidPct > 0 ? acidPct.toStringAsFixed(3) : '');
 
   void dispose() => acidCtrl.dispose();
 }
@@ -1079,7 +1090,7 @@ class _QtyModal extends StatefulWidget {
   final double? fallbackQty;
   final double existingQty;
   final bool isOffline;
-  final void Function(double qty, double acid) onConfirm;
+  final void Function(double qty, double acid, Map<String, double> breakdown) onConfirm;
 
   const _QtyModal({
     required this.lotNo, required this.rows, required this.fallbackQty,
@@ -1095,7 +1106,9 @@ class _QtyModalState extends State<_QtyModal> {
   late final List<double> _available;
   late final List<double> _acidPcts;
   late final List<String> _materialDescs;
+  late final List<String> _ulabTypes;
   late final bool _usingFallback;
+
 
   @override
   void initState() {
@@ -1104,6 +1117,7 @@ class _QtyModalState extends State<_QtyModal> {
     _available     = [];
     _acidPcts      = [];
     _materialDescs = [];
+    _ulabTypes = [];
 
     if (widget.rows != null && widget.rows!.isNotEmpty) {
       // ── Real rows (fresh API or offline cache) ────────────────────
@@ -1111,13 +1125,14 @@ class _QtyModalState extends State<_QtyModal> {
       for (int i = 0; i < widget.rows!.length; i++) {
         final row   = widget.rows![i];
         // final avail = _toDouble(row['available_qty']) ?? 0;
-        // final avail = (_toDouble(row['net_weight']) ?? 0) - (_toDouble(row['used_qty']) ?? 0);
-        final avail = (_toDouble(row['net_weight']) ?? 0);
+        // final avail = (_toDouble(row['available_qty']) ?? 0) - (_toDouble(row['used_qty']) ?? 0);
+        final avail = (_toDouble(row['available_qty']) ?? 0);
         final acid  = _toDouble(row['avg_acid_pct']) ?? 0;
         final desc  = row['material_description']?.toString() ?? '—';
         _available.add(avail);
         _acidPcts.add(acid);
         _materialDescs.add(desc);
+        _ulabTypes.add(row['ulab_type']?.toString() ?? '');
         // Pre-fill existing qty only when there is exactly 1 row
         final pre = widget.rows!.length == 1 && widget.existingQty > 0
             ? widget.existingQty.toStringAsFixed(3)
@@ -1130,6 +1145,7 @@ class _QtyModalState extends State<_QtyModal> {
       _available.add(widget.fallbackQty ?? 0);
       _acidPcts.add(0);
       _materialDescs.add('—');
+      _ulabTypes.add('');
       _assignCtrl.add(TextEditingController(
           text: widget.existingQty > 0 ? widget.existingQty.toStringAsFixed(3) : ''));
     }
@@ -1143,12 +1159,23 @@ class _QtyModalState extends State<_QtyModal> {
 
   void _confirm() {
     double totalQty = 0, wNum = 0, wDen = 0;
+    final breakdown = <String, double>{};
+
     for (int i = 0; i < _assignCtrl.length; i++) {
       final qty  = double.tryParse(_assignCtrl[i].text) ?? 0;
       final acid = _acidPcts[i];
-      if (qty > 0) { totalQty += qty; wNum += qty * acid; wDen += qty; }
+      if (qty > 0) {
+        totalQty += qty;
+        wNum += qty * acid;
+        wDen += qty;
+        // Use material description as key (mirrors web's ulab_type keying)
+        // final key = _materialDescs[i].isNotEmpty ? _materialDescs[i] : 'row_$i';
+        final key = _ulabTypes[i].isNotEmpty ? _ulabTypes[i] : 'row_$i';
+        breakdown[key] = qty;
+      }
     }
-    widget.onConfirm(totalQty, wDen > 0 ? wNum / wDen : 0.0);
+
+    widget.onConfirm(totalQty, wDen > 0 ? wNum / wDen : 0.0, breakdown);
     Navigator.of(context).pop();
   }
 
