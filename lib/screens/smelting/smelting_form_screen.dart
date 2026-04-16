@@ -1226,6 +1226,56 @@ class _TempRow {
 // ─────────────────────────────────────────────
 // Raw Materials Card
 // ─────────────────────────────────────────────
+// class _RawCard extends StatelessWidget {
+//   final List<_RawRow> rows;
+//   final bool isSubmitted;
+//   final List<SmeltingMaterialOption> materials;
+//   final double totalQty, totalExp;
+//   final VoidCallback? onAdd;
+//   final ValueChanged<int>? onRemove;
+//   final ValueChanged<int>? onQtyTap;
+//   final ValueChanged<int> onCalcExp;
+//   final VoidCallback onRecalc;
+//
+//   const _RawCard({
+//     required this.rows, required this.isSubmitted, required this.materials,
+//     required this.totalQty, required this.totalExp, required this.onAdd,
+//     required this.onRemove, required this.onQtyTap,
+//     required this.onCalcExp, required this.onRecalc,
+//   });
+//
+//   @override
+//   Widget build(BuildContext context) {
+//     return MesCard(
+//       padding: EdgeInsets.zero,
+//       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+//         _cardHead('Raw Materials', Icons.layers_outlined, onAdd),
+//         SingleChildScrollView(
+//           scrollDirection: Axis.horizontal,
+//           child: Column(children: [
+//             _tblHeader(['#', 'Raw Material', 'QTY (KG)', 'Yield %', 'Expected', ''],
+//                 [36, 180, 130, 90, 110, 36]),
+//             ...rows.asMap().entries.map((e) => _RawTblRow(
+//               index: e.key, row: e.value, materials: materials,
+//               isSubmitted: isSubmitted, canDelete: rows.length > 1 && !isSubmitted,
+//               onQtyTap:    onQtyTap == null ? null : () => onQtyTap!(e.key),
+//               onRemove:    onRemove == null ? null : () => onRemove!(e.key),
+//               onCalcExp:   () => onCalcExp(e.key),
+//               onRecalc:    onRecalc,
+//             )),
+//             _tblFooter([
+//               (36 + 180.0, 'TOTAL', true),
+//               (130.0, totalQty > 0 ? totalQty.toStringAsFixed(3) : '', false),
+//               (90.0, '', false),
+//               (110.0, totalExp > 0 ? totalExp.toStringAsFixed(3) : '', false),
+//               (36.0, '', false),
+//             ]),
+//           ]),
+//         ),
+//       ]),
+//     );
+//   }
+// }
 class _RawCard extends StatelessWidget {
   final List<_RawRow> rows;
   final bool isSubmitted;
@@ -1250,26 +1300,75 @@ class _RawCard extends StatelessWidget {
       padding: EdgeInsets.zero,
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         _cardHead('Raw Materials', Icons.layers_outlined, onAdd),
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Column(children: [
-            _tblHeader(['#', 'Raw Material', 'QTY (KG)', 'Yield %', 'Expected', ''],
-                [36, 180, 130, 90, 110, 36]),
-            ...rows.asMap().entries.map((e) => _RawTblRow(
-              index: e.key, row: e.value, materials: materials,
-              isSubmitted: isSubmitted, canDelete: rows.length > 1 && !isSubmitted,
-              onQtyTap:    onQtyTap == null ? null : () => onQtyTap!(e.key),
-              onRemove:    onRemove == null ? null : () => onRemove!(e.key),
-              onCalcExp:   () => onCalcExp(e.key),
-              onRecalc:    onRecalc,
-            )),
-            _tblFooter([
-              (36 + 180.0, 'TOTAL', true),
-              (130.0, totalQty > 0 ? totalQty.toStringAsFixed(3) : '', false),
-              (90.0, '', false),
-              (110.0, totalExp > 0 ? totalExp.toStringAsFixed(3) : '', false),
-              (36.0, '', false),
-            ]),
+        // Responsive header
+        Container(
+          decoration: const BoxDecoration(
+            color: AppColors.greenLight,
+            border: Border(bottom: BorderSide(color: AppColors.border, width: 2)),
+          ),
+          child: Row(children: [
+            const SizedBox(width: 36, child: SizedBox.shrink()),
+            const Expanded(flex: 22, child: _RawHeaderCell('Raw Material')),
+            const Expanded(flex: 16, child: _RawHeaderCell('QTY (KG)')),
+            const Expanded(flex: 12, child: _RawHeaderCell('Yield %')),
+            const Expanded(flex: 14, child: _RawHeaderCell('Expected')),
+            const SizedBox(width: 36, child: SizedBox.shrink()),
+          ]),
+        ),
+        // Rows
+        ...rows.asMap().entries.map((e) => _RawTblRow(
+          index: e.key, row: e.value, materials: materials,
+          isSubmitted: isSubmitted, canDelete: rows.length > 1 && !isSubmitted,
+          onQtyTap:  onQtyTap == null ? null : () => onQtyTap!(e.key),
+          onRemove:  onRemove == null ? null : () => onRemove!(e.key),
+          onCalcExp: () => onCalcExp(e.key),
+          onRecalc:  onRecalc,
+        )),
+        // Footer
+        Container(
+          decoration: const BoxDecoration(
+            color: AppColors.greenLight,
+            border: Border(top: BorderSide(color: AppColors.border, width: 2)),
+          ),
+          child: Row(children: [
+            const SizedBox(width: 36),
+            Expanded(
+              flex: 22,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: Text('TOTAL',
+                      style: AppTextStyles.label(color: AppColors.green)),
+                ),
+              ),
+            ),
+            Expanded(
+              flex: 16,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                child: Text(
+                  totalQty > 0 ? totalQty.toStringAsFixed(3) : '',
+                  style: GoogleFonts.outfit(
+                      fontSize: 12.5, fontWeight: FontWeight.w700,
+                      color: AppColors.green),
+                ),
+              ),
+            ),
+            const Expanded(flex: 12, child: SizedBox.shrink()),
+            Expanded(
+              flex: 14,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                child: Text(
+                  totalExp > 0 ? totalExp.toStringAsFixed(3) : '',
+                  style: GoogleFonts.outfit(
+                      fontSize: 12.5, fontWeight: FontWeight.w700,
+                      color: AppColors.green),
+                ),
+              ),
+            ),
+            const SizedBox(width: 36),
           ]),
         ),
       ]),
@@ -1277,6 +1376,17 @@ class _RawCard extends StatelessWidget {
   }
 }
 
+class _RawHeaderCell extends StatelessWidget {
+  final String label;
+  const _RawHeaderCell(this.label);
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+    child: Text(label.toUpperCase(),
+        style: AppTextStyles.label(color: AppColors.green)),
+  );
+}
 // ─────────────────────────────────────────────
 // Flux / Chemicals Card
 // ─────────────────────────────────────────────
@@ -1302,22 +1412,59 @@ class _FluxCard extends StatelessWidget {
       padding: EdgeInsets.zero,
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         _cardHead('Flux / Chemicals', Icons.science_outlined, onAdd),
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Column(children: [
-            _tblHeader(['#', 'Flux / Chemical', 'QTY (KG)', ''], [36, 180, 130, 36]),
-            ...rows.asMap().entries.map((e) => _FluxTblRow(
-              index: e.key, row: e.value, materials: materials,
-              isSubmitted: isSubmitted, canDelete: rows.length > 1 && !isSubmitted,
-              onQtyTap: onQtyTap == null ? null : () => onQtyTap!(e.key),
-              onRemove: onRemove == null ? null : () => onRemove!(e.key),
-              onRecalc: onRecalc,
-            )),
-            _tblFooter([
-              (36 + 180.0, 'TOTAL', true),
-              (130.0, totalQty > 0 ? totalQty.toStringAsFixed(3) : '', false),
-              (36.0, '', false),
-            ]),
+        // Responsive header
+        Container(
+          decoration: const BoxDecoration(
+            color: AppColors.greenLight,
+            border: Border(bottom: BorderSide(color: AppColors.border, width: 2)),
+          ),
+          child: Row(children: [
+            const SizedBox(width: 36, child: SizedBox.shrink()),
+            const Expanded(flex: 3, child: _RawHeaderCell('Flux / Chemical')),
+            const Expanded(flex: 2, child: _RawHeaderCell('QTY (KG)')),
+            const SizedBox(width: 36, child: SizedBox.shrink()),
+          ]),
+        ),
+        // Rows
+        ...rows.asMap().entries.map((e) => _FluxTblRow(
+          index: e.key, row: e.value, materials: materials,
+          isSubmitted: isSubmitted, canDelete: rows.length > 1 && !isSubmitted,
+          onQtyTap: onQtyTap == null ? null : () => onQtyTap!(e.key),
+          onRemove: onRemove == null ? null : () => onRemove!(e.key),
+          onRecalc: onRecalc,
+        )),
+        // Footer
+        Container(
+          decoration: const BoxDecoration(
+            color: AppColors.greenLight,
+            border: Border(top: BorderSide(color: AppColors.border, width: 2)),
+          ),
+          child: Row(children: [
+            const SizedBox(width: 36),
+            Expanded(
+              flex: 3,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: Text('TOTAL',
+                      style: AppTextStyles.label(color: AppColors.green)),
+                ),
+              ),
+            ),
+            Expanded(
+              flex: 2,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                child: Text(
+                  totalQty > 0 ? totalQty.toStringAsFixed(3) : '',
+                  style: GoogleFonts.outfit(
+                      fontSize: 12.5, fontWeight: FontWeight.w700,
+                      color: AppColors.green),
+                ),
+              ),
+            ),
+            const SizedBox(width: 36),
           ]),
         ),
       ]),
@@ -1622,73 +1769,112 @@ class _RawTblRowState extends State<_RawTblRow> {
   @override
   Widget build(BuildContext context) {
     final row = widget.row;
-    const w1 = 36.0, w2 = 180.0, w3 = 130.0, w4 = 90.0, w5 = 110.0, w6 = 36.0;
 
     return Container(
       decoration: const BoxDecoration(
           border: Border(bottom: BorderSide(color: AppColors.borderLight))),
-      child: Row(children: [
-        // SR
-        SizedBox(width: w1, child: Center(child: Text('${widget.index + 1}',
-            style: GoogleFonts.outfit(fontSize: 12, fontWeight: FontWeight.w700,
-                color: AppColors.green)))),
-        // Material
-        SizedBox(width: w2, child: Padding(padding: const EdgeInsets.all(5),
-          child: widget.isSubmitted
-              ? _roCell(row.materialName, w2 - 10)
-              : _SearchableDropdown(
-            value: row.materialId.isNotEmpty ? row.materialId : null,
-            materials: widget.materials,
-            onChanged: (v) {
-              setState(() => row.materialId = v ?? '');
-              widget.onRecalc();
-            },
+      child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+        // SR number — fixed 36
+        SizedBox(
+          width: 36,
+          child: Center(
+            child: Text('${widget.index + 1}',
+                style: GoogleFonts.outfit(fontSize: 12,
+                    fontWeight: FontWeight.w700, color: AppColors.green)),
           ),
-        )),
-        // QTY button
-        SizedBox(width: w3, child: Padding(padding: const EdgeInsets.all(5),
-          child: GestureDetector(
-            onTap: widget.onQtyTap,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-              decoration: BoxDecoration(
-                color: row.qtyCtrl.text.isNotEmpty
-                    ? const Color(0xFFD1FAE5) : AppColors.greenXLight,
-                border: Border.all(
-                    color: row.qtyCtrl.text.isNotEmpty
-                        ? AppColors.green : AppColors.border, width: 1.5),
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: Row(children: [
-                Expanded(child: Text(
-                  row.qtyCtrl.text.isNotEmpty
-                      ? '${row.qtyCtrl.text} KG'
-                      : widget.isSubmitted ? '—' : 'Click…',
-                  style: GoogleFonts.outfit(fontSize: 11.5,
-                      color: row.qtyCtrl.text.isNotEmpty
-                          ? AppColors.textDark : AppColors.textMuted),
-                  overflow: TextOverflow.ellipsis,
-                )),
-                if (!widget.isSubmitted)
-                  const Icon(Icons.keyboard_arrow_down, size: 12,
-                      color: AppColors.textMuted),
-              ]),
+        ),
+
+        // Material dropdown — flex 22
+        Expanded(
+          flex: 22,
+          child: Padding(
+            padding: const EdgeInsets.all(5),
+            child: widget.isSubmitted
+                ? _roResponsiveCell(row.materialName)
+                : _SearchableDropdown(
+              value: row.materialId.isNotEmpty ? row.materialId : null,
+              materials: widget.materials,
+              onChanged: (v) {
+                setState(() => row.materialId = v ?? '');
+                widget.onRecalc();
+              },
             ),
           ),
-        )),
-        // Yield
-        SizedBox(width: w4, child: Padding(padding: const EdgeInsets.all(5),
-          child: _tblInput(controller: row.yieldCtrl, hint: '0.00', numeric: true,
-              readOnly: widget.isSubmitted, onChanged: (_) => widget.onCalcExp()),
-        )),
-        // Expected (auto)
-        SizedBox(width: w5, child: Padding(padding: const EdgeInsets.all(5),
-          child: _tblInput(controller: row.expCtrl, readOnly: true,
-              calcStyle: true, hint: '0.000'),
-        )),
-        // Delete
-        SizedBox(width: w6, child: Center(child: widget.canDelete
-            ? _delBtn(widget.onRemove!) : const SizedBox.shrink())),
+        ),
+
+        // QTY tap button — flex 16
+        Expanded(
+          flex: 16,
+          child: Padding(
+            padding: const EdgeInsets.all(5),
+            child: GestureDetector(
+              onTap: widget.onQtyTap,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+                decoration: BoxDecoration(
+                  color: row.qtyCtrl.text.isNotEmpty
+                      ? const Color(0xFFD1FAE5) : AppColors.greenXLight,
+                  border: Border.all(
+                      color: row.qtyCtrl.text.isNotEmpty
+                          ? AppColors.green : AppColors.border,
+                      width: 1.5),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Row(children: [
+                  Expanded(
+                    child: Text(
+                      row.qtyCtrl.text.isNotEmpty
+                          ? '${row.qtyCtrl.text} KG'
+                          : widget.isSubmitted ? '—' : 'Tap…',
+                      style: GoogleFonts.outfit(fontSize: 11.5,
+                          color: row.qtyCtrl.text.isNotEmpty
+                              ? AppColors.textDark : AppColors.textMuted),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  if (!widget.isSubmitted)
+                    const Icon(Icons.keyboard_arrow_down, size: 12,
+                        color: AppColors.textMuted),
+                ]),
+              ),
+            ),
+          ),
+        ),
+
+        // Yield % — flex 12
+        Expanded(
+          flex: 12,
+          child: Padding(
+            padding: const EdgeInsets.all(5),
+            child: _tblInput(
+              controller: row.yieldCtrl, hint: '0.00',
+              numeric: true, readOnly: widget.isSubmitted,
+              onChanged: (_) => widget.onCalcExp(),
+            ),
+          ),
+        ),
+
+        // Expected (auto) — flex 14
+        Expanded(
+          flex: 14,
+          child: Padding(
+            padding: const EdgeInsets.all(5),
+            child: _tblInput(
+              controller: row.expCtrl, readOnly: true,
+              calcStyle: true, hint: '0.000',
+            ),
+          ),
+        ),
+
+        // Delete — fixed 36
+        SizedBox(
+          width: 36,
+          child: Center(
+            child: widget.canDelete
+                ? _delBtn(widget.onRemove!)
+                : const SizedBox.shrink(),
+          ),
+        ),
       ]),
     );
   }
@@ -1716,64 +1902,102 @@ class _FluxTblRowState extends State<_FluxTblRow> {
   @override
   Widget build(BuildContext context) {
     final row = widget.row;
-    const w1 = 36.0, w2 = 180.0, w3 = 130.0, w4 = 36.0;
 
     return Container(
       decoration: const BoxDecoration(
           border: Border(bottom: BorderSide(color: AppColors.borderLight))),
-      child: Row(children: [
-        SizedBox(width: w1, child: Center(child: Text('${widget.index + 1}',
-            style: GoogleFonts.outfit(fontSize: 12, fontWeight: FontWeight.w700,
-                color: AppColors.green)))),
-        SizedBox(width: w2, child: Padding(padding: const EdgeInsets.all(5),
-          child: widget.isSubmitted
-              ? _roCell(row.materialName, w2 - 10)
-              : _SearchableDropdown(
-            value: row.materialId.isNotEmpty ? row.materialId : null,
-            materials: widget.materials,
-            onChanged: (v) {
-              setState(() => row.materialId = v ?? '');
-              widget.onRecalc();
-            },
+      child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+        // SR number — fixed 36
+        SizedBox(
+          width: 36,
+          child: Center(
+            child: Text('${widget.index + 1}',
+                style: GoogleFonts.outfit(fontSize: 12,
+                    fontWeight: FontWeight.w700, color: AppColors.green)),
           ),
-        )),
-        SizedBox(width: w3, child: Padding(padding: const EdgeInsets.all(5),
-          child: GestureDetector(
-            onTap: widget.onQtyTap,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-              decoration: BoxDecoration(
-                color: row.qtyCtrl.text.isNotEmpty
-                    ? const Color(0xFFD1FAE5) : AppColors.greenXLight,
-                border: Border.all(
-                    color: row.qtyCtrl.text.isNotEmpty
-                        ? AppColors.green : AppColors.border, width: 1.5),
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: Row(children: [
-                Expanded(child: Text(
-                  row.qtyCtrl.text.isNotEmpty
-                      ? '${row.qtyCtrl.text} KG'
-                      : widget.isSubmitted ? '—' : 'Click…',
-                  style: GoogleFonts.outfit(fontSize: 11.5,
-                      color: row.qtyCtrl.text.isNotEmpty
-                          ? AppColors.textDark : AppColors.textMuted),
-                  overflow: TextOverflow.ellipsis,
-                )),
-                if (!widget.isSubmitted)
-                  const Icon(Icons.keyboard_arrow_down, size: 12,
-                      color: AppColors.textMuted),
-              ]),
+        ),
+
+        // Material dropdown — flex 3
+        Expanded(
+          flex: 3,
+          child: Padding(
+            padding: const EdgeInsets.all(5),
+            child: widget.isSubmitted
+                ? _roResponsiveCell(row.materialName)
+                : _SearchableDropdown(
+              value: row.materialId.isNotEmpty ? row.materialId : null,
+              materials: widget.materials,
+              onChanged: (v) {
+                setState(() => row.materialId = v ?? '');
+                widget.onRecalc();
+              },
             ),
           ),
-        )),
-        SizedBox(width: w4, child: Center(child: widget.canDelete
-            ? _delBtn(widget.onRemove!) : const SizedBox.shrink())),
+        ),
+
+        // QTY tap button — flex 2
+        Expanded(
+          flex: 2,
+          child: Padding(
+            padding: const EdgeInsets.all(5),
+            child: GestureDetector(
+              onTap: widget.onQtyTap,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+                decoration: BoxDecoration(
+                  color: row.qtyCtrl.text.isNotEmpty
+                      ? const Color(0xFFD1FAE5) : AppColors.greenXLight,
+                  border: Border.all(
+                      color: row.qtyCtrl.text.isNotEmpty
+                          ? AppColors.green : AppColors.border,
+                      width: 1.5),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Row(children: [
+                  Expanded(
+                    child: Text(
+                      row.qtyCtrl.text.isNotEmpty
+                          ? '${row.qtyCtrl.text} KG'
+                          : widget.isSubmitted ? '—' : 'Tap…',
+                      style: GoogleFonts.outfit(fontSize: 11.5,
+                          color: row.qtyCtrl.text.isNotEmpty
+                              ? AppColors.textDark : AppColors.textMuted),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  if (!widget.isSubmitted)
+                    const Icon(Icons.keyboard_arrow_down, size: 12,
+                        color: AppColors.textMuted),
+                ]),
+              ),
+            ),
+          ),
+        ),
+
+        // Delete — fixed 36
+        SizedBox(
+          width: 36,
+          child: Center(
+            child: widget.canDelete
+                ? _delBtn(widget.onRemove!)
+                : const SizedBox.shrink(),
+          ),
+        ),
       ]),
     );
   }
 }
-
+Widget _roResponsiveCell(String text) => Container(
+  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+  decoration: BoxDecoration(
+    color: const Color(0xFFF0F4F2),
+    border: Border.all(color: AppColors.border, width: 1.5),
+    borderRadius: BorderRadius.circular(6),
+  ),
+  child: Text(text,
+      style: GoogleFonts.outfit(fontSize: 12.5, color: AppColors.textMuted),
+      overflow: TextOverflow.ellipsis),
+);
 class _ProcTblRow extends StatefulWidget {
   final int index;
   final _ProcessRow row;
