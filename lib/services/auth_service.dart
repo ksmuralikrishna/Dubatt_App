@@ -33,15 +33,13 @@ class AuthService {
   };
 
   Future<LoginResult> login(String loginIdentifier, String password) async {
-    print('Trying to login...');
-    print('POST $kBaseUrl/auth/login with $loginIdentifier / $password');
     try {
       final res = await http.post(
         Uri.parse('$kBaseUrl/auth/login'),
         headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
         body: jsonEncode({'login': loginIdentifier, 'password': password}),
       ).timeout(const Duration(seconds: 15));
-      print('Response: ${res.statusCode} - ${res.body}');
+
       final data = jsonDecode(res.body);
 
       if (res.statusCode == 200 && data['status'] == 'ok') {

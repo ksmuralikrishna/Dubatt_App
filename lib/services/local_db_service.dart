@@ -156,19 +156,34 @@ class LocalDbService {
           await db.execute('''
           CREATE TABLE bbsu_acid_summary_cache (
             id                   INTEGER PRIMARY KEY AUTOINCREMENT,
-            lot_number           TEXT NOT NULL,
             lot_no               TEXT,
+            ulab_type            TEXT,
             material_description TEXT,
             avg_acid_pct         REAL,
-            net_weight           REAL,
+            available_qty        REAL,
             unit                 TEXT,
             cached_at            TEXT NOT NULL
           )
         ''');
+          // lot_number           TEXT NOT NULL,
+        //   await db.execute('''
+        //   CREATE TABLE bbsu_acid_summary_cache (
+        //     id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+        //     lot_number           TEXT NOT NULL,
+        //     lot_no               TEXT,
+        //     material_description TEXT,
+        //     avg_acid_pct         REAL,
+        //     available_qty        REAL,
+        //     unit                 TEXT,
+        //     cached_at            TEXT NOT NULL
+        //   )
+        // ''');
+
+
 
           await db.execute('''
           CREATE INDEX IF NOT EXISTS idx_acid_summary_lot
-          ON bbsu_acid_summary_cache (lot_number)
+          ON bbsu_acid_summary_cache (lot_no)
         ''');
 
           // ── Smelting tables (NEW)
@@ -713,18 +728,19 @@ class LocalDbService {
     // Delete all existing rows for this lot before re-inserting
     batch.delete(
       'bbsu_acid_summary_cache',
-      where: 'lot_number = ?',
+      where: 'lot_no = ?',
       whereArgs: [lotNumber],
     );
 
     final now = DateTime.now().toIso8601String();
     for (final row in rows) {
       batch.insert('bbsu_acid_summary_cache', {
-        'lot_number':           lotNumber,
+        // 'lot_number':           lotNumber,
         'lot_no':               row['lot_no']?.toString(),
+        'ulab_type':            row['ulab_type']?.toString(),
         'material_description': row['material_description']?.toString(),
         'avg_acid_pct':         _toDoubleOrNull(row['avg_acid_pct']),
-        'net_weight':           _toDoubleOrNull(row['net_weight']),
+        'available_qty':        _toDoubleOrNull(row['available_qty']),
         'unit':                 row['unit']?.toString(),
         'cached_at':            now,
       });
@@ -733,11 +749,33 @@ class LocalDbService {
     await batch.commit(noResult: true);
   }
 
+  Future<void> cacheAllAcidSummary(List<Map<String, dynamic>> rows) async {
+    final batch = db.batch();
+
+    // Clear the entire cache before re-inserting fresh data
+    batch.delete('bbsu_acid_summary_cache');
+
+    final now = DateTime.now().toIso8601String();
+    for (final row in rows) {
+      batch.insert('bbsu_acid_summary_cache', {
+        'lot_no':               row['lot_no']?.toString(),
+        'ulab_type':            row['ulab_type']?.toString(),
+        'material_description': row['material_description']?.toString(),
+        'unit':                 row['unit']?.toString(),
+        'avg_acid_pct':         _toDoubleOrNull(row['avg_acid_pct']),
+        'available_qty':        _toDoubleOrNull(row['available_qty']),
+        // 'used_qty':             _toDoubleOrNull(row['used_qty']),
+        'cached_at':            now,
+      });
+    }
+    await batch.commit(noResult: true);
+  }
+
   Future<List<Map<String, dynamic>>> getCachedAcidSummary(
       String lotNumber) async {
     final rows = await db.query(
       'bbsu_acid_summary_cache',
-      where: 'lot_number = ?',
+      where: 'lot_no = ?',
       whereArgs: [lotNumber],
       orderBy: 'id ASC',
     );
@@ -748,9 +786,44 @@ class LocalDbService {
       'lot_no':               r['lot_no'],
       'material_description': r['material_description'],
       'avg_acid_pct':         r['avg_acid_pct'],
-      'net_weight':           r['net_weight'],
+      'available_qty':        r['available_qty'],
       'unit':                 r['unit'],
+      'ulab_type':            r['ulab_type'],
     }).toList();
+  }
+  /// Decrease available_qty for each material row used in an offline draft.
+  /// breakdown keys are ulab_type values, values are assigned qty.
+  Future<void> decreaseAcidSummaryQty(
+      String lotNo, Map<String, double> breakdown) async {
+    final batch = db.batch();
+    for (final entry in breakdown.entries) {
+      final ulabType   = entry.key;
+      final assignedQty = entry.value;
+      if (assignedQty <= 0) continue;
+      batch.rawUpdate('''
+      UPDATE bbsu_acid_summary_cache
+      SET available_qty = MAX(0, COALESCE(available_qty, 0) - ?)
+      WHERE lot_no = ? AND ulab_type = ?
+    ''', [assignedQty, lotNo, ulabType]);
+    }
+    await batch.commit(noResult: true);
+  }
+
+  /// Restore available_qty when an offline draft is deleted or its qty is changed.
+  Future<void> restoreAcidSummaryQty(
+      String lotNo, Map<String, double> breakdown) async {
+    final batch = db.batch();
+    for (final entry in breakdown.entries) {
+      final ulabType    = entry.key;
+      final assignedQty = entry.value;
+      if (assignedQty <= 0) continue;
+      batch.rawUpdate('''
+      UPDATE bbsu_acid_summary_cache
+      SET available_qty = COALESCE(available_qty, 0) + ?
+      WHERE lot_no = ? AND ulab_type = ?
+    ''', [assignedQty, lotNo, ulabType]);
+    }
+    await batch.commit(noResult: true);
   }
 
   /// Returns true when at least one cached row exists for this lot.

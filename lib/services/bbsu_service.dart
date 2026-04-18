@@ -81,7 +81,6 @@ class BbsuService {
         if (list.isNotEmpty) {
           await LocalDbService().cacheAcidSummary(lotNo, list);
         }
-
         return list;
       }
 
@@ -113,6 +112,34 @@ class BbsuService {
       } catch (_) {
         // Ignore per-lot failures; continue preloading remaining lots.
       }
+    }
+  }
+
+  Future<void> preloadAllAcidSummariesForLots() async {
+    if (!ConnectivityService().isOnline) return;
+
+    try {
+      final res = await http
+          .get(Uri.parse('$kBaseUrl/bbsu-batches/acid-summary-all'), headers: _headers)
+          .timeout(const Duration(seconds: 15));
+
+      if (res.statusCode == 200) {
+        final body = jsonDecode(res.body);
+        final lots = (body['data'] ?? []) as List;
+
+        // Flatten: extract all nested `data` rows across every lot
+        final allRows = <Map<String, dynamic>>[];
+        for (final lot in lots) {
+          final rows = (lot['data'] ?? []) as List;
+          for (final row in rows) {
+            allRows.add(Map<String, dynamic>.from(row));
+          }
+        }
+
+        await LocalDbService().cacheAllAcidSummary(allRows);
+      }
+    } catch (e) {
+      // optional: log error
     }
   }
 
@@ -310,6 +337,72 @@ class BbsuService {
     }
   }
 
+  // Future<BbsuSaveResult> save(
+  //     Map<String, dynamic> payload, {
+  //       String? id,
+  //     }) async {
+  //   final isQueueEdit = id != null && id.startsWith('queue_');
+  //
+  //   if (!ConnectivityService().isOnline || isQueueEdit) {
+  //     try {
+  //       if (isQueueEdit) {
+  //         final queueId = int.parse(id!.substring(6));
+  //         await LocalDbService().updateQueuePayload(queueId, payload);
+  //         return BbsuSaveResult(success: true, newId: id);
+  //       } else {
+  //         await LocalDbService().addToQueue(SyncOperation(
+  //           operation: id == null
+  //               ? SyncOperation.opCreate
+  //               : SyncOperation.opUpdate,
+  //           table:     'bbsu-batches',
+  //           serverId:  id,
+  //           payload:   payload,
+  //           createdAt: DateTime.now(),
+  //         ));
+  //         return const BbsuSaveResult(success: true, newId: null);
+  //       }
+  //     } catch (e) {
+  //       return BbsuSaveResult.error('Network error: ${e.toString()}');
+  //     }
+  //   }
+  //
+  //   try {
+  //     final isCreate = id == null;
+  //     final uri = Uri.parse(
+  //       isCreate
+  //           ? '$kBaseUrl/bbsu-batches'
+  //           : '$kBaseUrl/bbsu-batches/$id',
+  //     );
+  //     final res = await (isCreate
+  //         ? http.post(uri, headers: _headers, body: jsonEncode(payload))
+  //         : http.put(uri,  headers: _headers, body: jsonEncode(payload)))
+  //         .timeout(const Duration(seconds: 20));
+  //
+  //     final body = jsonDecode(res.body);
+  //
+  //     if (res.statusCode == 200 || res.statusCode == 201) {
+  //       return BbsuSaveResult(
+  //         success: true,
+  //         newId:   body['data']?['id']?.toString(),
+  //       );
+  //     } else if (res.statusCode == 422) {
+  //       return BbsuSaveResult(
+  //         success:     false,
+  //         errorMsg:    body['message'],
+  //         fieldErrors: body['errors'] ?? {},
+  //       );
+  //     }
+  //     print("FULL RESPONSE: ${res.body}");
+  //
+  //     return BbsuSaveResult.error(
+  //         body['error'] ?? body['message'] ?? 'Save failed.'
+  //     );
+  //   } catch (e) {
+  //     print('Network/parsing error: $e');
+  //     return BbsuSaveResult.error('Network error: ${e.toString()}');
+  //   }
+  // }
+
   Future<BbsuSaveResult> save(
       Map<String, dynamic> payload, {
         String? id,
@@ -320,9 +413,50 @@ class BbsuService {
       try {
         if (isQueueEdit) {
           final queueId = int.parse(id!.substring(6));
+
+          // ── Restore old breakdown qty before applying new one ──
+          final oldRow = await LocalDbService().getQueueItemById(queueId);
+          if (oldRow != null) {
+            final oldPayload =
+            jsonDecode(oldRow['payload'] as String) as Map<String, dynamic>;
+            final oldInputs =
+            (oldPayload['input_details'] as List? ?? []);
+            for (final detail in oldInputs) {
+              final lotNo = detail['lot_no']?.toString() ?? '';
+              final rawBreakdown =
+              detail['material_breakdown'] as Map<String, dynamic>?;
+              if (lotNo.isNotEmpty && rawBreakdown != null) {
+                final breakdown = rawBreakdown.map(
+                      (k, v) => MapEntry(k, (v as num).toDouble()),
+                );
+                await LocalDbService()
+                    .restoreAcidSummaryQty(lotNo, breakdown);
+              }
+            }
+          }
+
+          // ── Save updated payload ──
           await LocalDbService().updateQueuePayload(queueId, payload);
+
+          // ── Decrease qty for new breakdown ──
+          final newInputs =
+          (payload['input_details'] as List? ?? []);
+          for (final detail in newInputs) {
+            final lotNo = detail['lot_no']?.toString() ?? '';
+            final rawBreakdown =
+            detail['material_breakdown'] as Map<String, dynamic>?;
+            if (lotNo.isNotEmpty && rawBreakdown != null) {
+              final breakdown = rawBreakdown.map(
+                    (k, v) => MapEntry(k, (v as num).toDouble()),
+              );
+              await LocalDbService()
+                  .decreaseAcidSummaryQty(lotNo, breakdown);
+            }
+          }
+
           return BbsuSaveResult(success: true, newId: id);
         } else {
+          // ── New offline record ──
           await LocalDbService().addToQueue(SyncOperation(
             operation: id == null
                 ? SyncOperation.opCreate
@@ -332,6 +466,22 @@ class BbsuService {
             payload:   payload,
             createdAt: DateTime.now(),
           ));
+
+          // ── Decrease qty for each input lot ──
+          final inputs = (payload['input_details'] as List? ?? []);
+          for (final detail in inputs) {
+            final lotNo = detail['lot_no']?.toString() ?? '';
+            final rawBreakdown =
+            detail['material_breakdown'] as Map<String, dynamic>?;
+            if (lotNo.isNotEmpty && rawBreakdown != null) {
+              final breakdown = rawBreakdown.map(
+                    (k, v) => MapEntry(k, (v as num).toDouble()),
+              );
+              await LocalDbService()
+                  .decreaseAcidSummaryQty(lotNo, breakdown);
+            }
+          }
+
           return const BbsuSaveResult(success: true, newId: null);
         }
       } catch (e) {
@@ -398,10 +548,59 @@ class BbsuService {
     }
   }
 
+  // Future<String?> delete(String id) async {
+  //   if (id.startsWith('queue_')) {
+  //     try {
+  //       final queueId = int.parse(id.substring(6));
+  //       await LocalDbService().deleteQueueItem(queueId);
+  //       return null;
+  //     } catch (e) {
+  //       return 'Failed to delete offline record: $e';
+  //     }
+  //   }
+  //
+  //   try {
+  //     final res = await http
+  //         .delete(
+  //       Uri.parse('$kBaseUrl/bbsu-batches/$id'),
+  //       headers: _headers,
+  //     )
+  //         .timeout(const Duration(seconds: 12));
+  //
+  //     if (res.statusCode == 200 || res.statusCode == 204) return null;
+  //     final body = jsonDecode(res.body);
+  //     return body['message'] ?? 'Delete failed.';
+  //   } catch (_) {
+  //     return 'Network error. Could not delete.';
+  //   }
+  // }
+
   Future<String?> delete(String id) async {
     if (id.startsWith('queue_')) {
       try {
         final queueId = int.parse(id.substring(6));
+
+        // ── Restore qty before deleting ──
+        final queueRow =
+        await LocalDbService().getQueueItemById(queueId);
+        if (queueRow != null) {
+          final payload =
+          jsonDecode(queueRow['payload'] as String) as Map<String, dynamic>;
+          final inputs = (payload['input_details'] as List? ?? []);
+          for (final detail in inputs) {
+            final lotNo = detail['lot_no']?.toString() ?? '';
+            final rawBreakdown =
+            detail['material_breakdown'] as Map<String, dynamic>?;
+            if (lotNo.isNotEmpty && rawBreakdown != null) {
+              final breakdown = rawBreakdown.map(
+                    (k, v) => MapEntry(k, (v as num).toDouble()),
+              );
+              await LocalDbService()
+                  .restoreAcidSummaryQty(lotNo, breakdown);
+            }
+          }
+        }
+
         await LocalDbService().deleteQueueItem(queueId);
         return null;
       } catch (e) {
@@ -424,7 +623,6 @@ class BbsuService {
       return 'Network error. Could not delete.';
     }
   }
-
   static String formatForDatetimeLocal(String? iso) {
     if (iso == null || iso.isEmpty) return '';
     try {

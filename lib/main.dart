@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'theme/app_theme.dart';
 import 'services/auth_service.dart';
+import 'services/sync_service.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/receiving/receiving_form_screen.dart';
 
@@ -37,6 +38,7 @@ void main() async {
   await AuthService().init();
   await LocalDbService().init();
   await ConnectivityService().init();
+  await SyncService().downloadMasterData();
 
   AppSyncManager().init();
 

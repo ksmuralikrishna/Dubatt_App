@@ -54,29 +54,21 @@ class SyncService {
 
     // BBSU: available lots + acid summary per lot (for qty modal offline)
     final bbsu = BbsuService();
-    final bbsuLots = await bbsu.getAvailableLots(); // caches bbsu_lot_cache
-    await bbsu.preloadAcidSummariesForLots(
-      bbsuLots.map((l) => l.lotNumber).toList(),
-    );
-    // await bbsu.preloadAcidSummariesForLots();
+    await bbsu.getAvailableLots(); // caches bbsu_lot_cache
+    // await bbsu.preloadAcidSummariesForLots(
+    //   bbsuLots.map((l) => l.lotNumber).toList(),
+    // );
+    await bbsu.preloadAllAcidSummariesForLots();
+
 
     // Smelting: materials + BBSU stock per material
     final smelting = SmeltingService();
-    // final smeltMaterials = await smelting.getMaterials(); // caches smelting_material_cache
-    // await smelting.preloadBbsuLotsForMaterials();
-    // await smelting.preloadBbsuLotsForMaterials(
-    //   smeltMaterials.map((m) => m.id).toList(),
-    // );
     await smelting.getMaterials();
     await smelting.preloadBbsuLotsForMaterials();
 
     // Refining: materials + process names + smelting stock per material
     final refining = RefiningService();
-    // final refMaterials = await refining.getMaterials(); // caches refining_material_cache
     await refining.getProcessNames();                   // caches refining_process_name_cache
-    // await refining.preloadSmeltingLotsForMaterials(
-    //   refMaterials.map((m) => m.id).toList(),
-    // );
     await refining.preloadSmeltingLotsForMaterials();
     await refining.getMaterials();
   }
