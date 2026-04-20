@@ -295,13 +295,51 @@ class _RefiningFormScreenState extends State<RefiningFormScreen> {
     final e = r.endCtrl.text;
     if (s.isNotEmpty && e.isNotEmpty) {
       try {
-        final sp = s.split(':').map(int.parse).toList();
-        final ep = e.split(':').map(int.parse).toList();
-        int m = (ep[0] * 60 + ep[1]) - (sp[0] * 60 + sp[1]);
-        if (m < 0) m += 1440;
+        // Parse 12-hour format with AM/PM
+        int getMinutesFrom12Hour(String timeStr) {
+          // Handle formats like "2:30 PM", "12:00 AM", "02:30 PM"
+          final parts = timeStr.trim().split(' ');
+          if (parts.length != 2) return 0;
+
+          final timeParts = parts[0].split(':');
+          if (timeParts.length != 2) return 0;
+
+          int hour = int.parse(timeParts[0]);
+          final minute = int.parse(timeParts[1]);
+          final period = parts[1].toUpperCase();
+
+          if (period == 'PM' && hour != 12) {
+            hour += 12;
+          } else if (period == 'AM' && hour == 12) {
+            hour = 0;
+          }
+
+          return hour * 60 + minute;
+        }
+
+        final startMins = getMinutesFrom12Hour(s);
+        final endMins = getMinutesFrom12Hour(e);
+
+        int m = endMins - startMins;
+        if (m < 0) m += 1440; // Add 24 hours if end time is next day
+
         r.totalMins = m;
-        r.totalCtrl.text = '${m} min';
-      } catch (_) {}
+
+        // Format as "X hr Y min" or just "Y min" if less than 60 minutes
+        final hours = m ~/ 60;
+        final minutes = m % 60;
+
+        if (hours > 0 && minutes > 0) {
+          r.totalCtrl.text = '${hours} hr ${minutes} min';
+        } else if (hours > 0) {
+          r.totalCtrl.text = '${hours} hr';
+        } else {
+          r.totalCtrl.text = '${minutes} min';
+        }
+      } catch (_) {
+        r.totalMins = 0;
+        r.totalCtrl.text = '';
+      }
     } else {
       r.totalMins = 0;
       r.totalCtrl.text = '';
@@ -410,18 +448,56 @@ class _RefiningFormScreenState extends State<RefiningFormScreen> {
     if (p != null) setState(() => _dateCtrl.text = DateFormat('yyyy-MM-dd').format(p));
   }
 
+  // Future<void> _pickTime(TextEditingController ctrl) async {
+  //   TimeOfDay current = TimeOfDay.now();
+  //   if (ctrl.text.isNotEmpty) {
+  //     try {
+  //       final parts = ctrl.text.split(':');
+  //       current = TimeOfDay(hour: int.parse(parts[0]), minute: int.parse(parts[1]));
+  //     } catch (_) {}
+  //   }
+  //   final p = await showTimePicker(context: context, initialTime: current);
+  //   if (p != null) {
+  //     setState(() => ctrl.text =
+  //     '${p.hour.toString().padLeft(2,'0')}:${p.minute.toString().padLeft(2,'0')}');
+  //   }
+  // }
+
   Future<void> _pickTime(TextEditingController ctrl) async {
     TimeOfDay current = TimeOfDay.now();
     if (ctrl.text.isNotEmpty) {
       try {
-        final parts = ctrl.text.split(':');
-        current = TimeOfDay(hour: int.parse(parts[0]), minute: int.parse(parts[1]));
+        // Parse 12-hour format
+        final parts = ctrl.text.trim().split(' ');
+        if (parts.length == 2) {
+          final timeParts = parts[0].split(':');
+          if (timeParts.length == 2) {
+            int hour = int.parse(timeParts[0]);
+            final minute = int.parse(timeParts[1]);
+            final period = parts[1].toUpperCase();
+
+            // Convert to 24-hour for TimeOfDay
+            if (period == 'PM' && hour != 12) {
+              hour += 12;
+            } else if (period == 'AM' && hour == 12) {
+              hour = 0;
+            }
+            current = TimeOfDay(hour: hour, minute: minute);
+          }
+        }
       } catch (_) {}
     }
     final p = await showTimePicker(context: context, initialTime: current);
     if (p != null) {
-      setState(() => ctrl.text =
-      '${p.hour.toString().padLeft(2,'0')}:${p.minute.toString().padLeft(2,'0')}');
+      // Convert to 12-hour format
+      int hour = p.hour;
+      final minute = p.minute;
+      final period = hour >= 12 ? 'PM' : 'AM';
+
+      hour = hour % 12;
+      if (hour == 0) hour = 12;
+
+      setState(() => ctrl.text = '$hour:${minute.toString().padLeft(2, '0')} $period');
     }
   }
 
@@ -1543,10 +1619,25 @@ class _ProcessTable extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final h = totalProcMins ~/ 60;
-    final m = totalProcMins % 60;
-    final totalStr = totalProcMins > 0
-        ? (h > 0 ? '${h}h ${m}min' : '${m} min') : '';
+    // final h = totalProcMins ~/ 60;
+    // final m = totalProcMins % 60;
+    // final totalStr = totalProcMins > 0
+    //     ? (h > 0 ? '${h}h ${m}min' : '${m} min') : '';
+
+    String getFormattedTime(int totalMinutes) {
+      if (totalMinutes <= 0) return '';
+      final hours = totalMinutes ~/ 60;
+      final minutes = totalMinutes % 60;
+
+      if (hours > 0 && minutes > 0) {
+        return '$hours hr $minutes min';
+      } else if (hours > 0) {
+        return '$hours hr';
+      } else {
+        return '$minutes min';
+      }
+    }
+    final totalStr = getFormattedTime(totalProcMins);
 
     return MesCard(
       padding: EdgeInsets.zero,
