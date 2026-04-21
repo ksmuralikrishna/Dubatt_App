@@ -41,13 +41,18 @@ class _ReceivingListScreenState extends State<ReceivingListScreen> {
   String _sortBy       = 'receipt_date';
   String _sortOrder    = 'desc';
 
+  // final _statusOptions = const [
+  //   {'value': 'all',         'label': 'All Status'},
+  //   {'value': 'pending',     'label': 'Pending'},
+  //   {'value': 'approved', 'label': 'Submitted'},
+  //   {'value': 'in_progress', 'label': 'In Progress'},
+  // ];
   final _statusOptions = const [
-    {'value': 'all',         'label': 'All Status'},
-    {'value': 'pending',     'label': 'Pending'},
-    {'value': 'approved', 'label': 'Submitted'},
-    {'value': 'in_progress', 'label': 'In Progress'},
+    {'value': 'all',     'label': 'All Status'},
+    {'value': '0',       'label': 'Pending'},      // ← as string
+    {'value': '1',       'label': 'Submitted'},    // ← as string
+    {'value': '2',       'label': 'In Progress'},  // ← as string
   ];
-
   // @override
   // void initState() {
   //   super.initState();
