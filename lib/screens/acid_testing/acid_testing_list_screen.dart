@@ -62,8 +62,8 @@ class _AcidTestingListScreenState extends State<AcidTestingListScreen> {
 
   final _statusOptions = const [
     {'value': 'all',       'label': 'All Status'},
-    {'value': 'draft',     'label': 'Draft'},
-    {'value': 'submitted', 'label': 'Submitted'},
+    {'value': '0',     'label': 'Draft'},
+    {'value': '1', 'label': 'Submitted'},
   ];
 
   @override
