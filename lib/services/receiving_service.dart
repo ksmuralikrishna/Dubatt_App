@@ -267,10 +267,11 @@ class ReceivingService {
     try {
       final res = await http
           .get(
-        Uri.parse('$kBaseUrl/suppliers'),
+        // Uri.parse('$kBaseUrl/suppliers'),
+        Uri.parse('$kBaseUrl/suppliers?per_page=9999'),
         headers: _headers,
       )
-          .timeout(const Duration(seconds: 10));
+          .timeout(const Duration(seconds: 30));
       if (res.statusCode == 200) {
         final body    = jsonDecode(res.body);
         final list    = body['data']?['data'] ?? body['data'] ?? [];

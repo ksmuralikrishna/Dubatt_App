@@ -121,7 +121,7 @@ class SyncService {
     if (res.statusCode == 200 || res.statusCode == 201) {
       final serverId = body['data']?['id']?.toString();
       if (serverId != null && op.localId != null) {
-        await LocalDbService().markSynced(op.localId!, serverId);
+        // await LocalDbService().markSynced(op.localId!, serverId);
       }
       await LocalDbService().deleteQueueItem(op.localId!);
     } else if (res.statusCode == 422) {

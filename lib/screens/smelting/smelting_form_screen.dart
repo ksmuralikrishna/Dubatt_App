@@ -605,7 +605,7 @@ class _SmeltingFormScreenState extends State<SmeltingFormScreen> {
 
     final tempRecs = _tempRows.map((t) => {
       'record_time': t.timeCtrl.text.isNotEmpty
-          ? SmeltingService.toIsoDateTime(date, t.timeCtrl.text) : null,
+          ? _convertTo24Hour(t.timeCtrl.text) : null,
       'inside_temp_before_charging': double.tryParse(t.insideCtrl.text),
       'process_gas_chamber_temp': t.pgcCtrl.text.trim().isNotEmpty
           ? t.pgcCtrl.text.trim() : null,
@@ -2115,20 +2115,69 @@ class _TempTblRow extends StatelessWidget {
     required this.canDelete, required this.onRemove,
   });
 
+  // Future<void> _pickTime(BuildContext context) async {
+  //   TimeOfDay current = TimeOfDay.now();
+  //   if (row.timeCtrl.text.isNotEmpty) {
+  //     try {
+  //       final parts = row.timeCtrl.text.split(':');
+  //       current = TimeOfDay(
+  //           hour: int.parse(parts[0]), minute: int.parse(parts[1]));
+  //     } catch (_) {}
+  //   }
+  //   final picked =
+  //   await showTimePicker(context: context, initialTime: current);
+  //   if (picked != null) {
+  //     row.timeCtrl.text =
+  //     '${picked.hour.toString().padLeft(2, '0')}:${picked.minute.toString().padLeft(2, '0')}';
+  //   }
+  // }
+
   Future<void> _pickTime(BuildContext context) async {
     TimeOfDay current = TimeOfDay.now();
+
     if (row.timeCtrl.text.isNotEmpty) {
       try {
-        final parts = row.timeCtrl.text.split(':');
-        current = TimeOfDay(
-            hour: int.parse(parts[0]), minute: int.parse(parts[1]));
+        // Parse existing 12-hour value, e.g. "2:30 PM"
+        final parts = row.timeCtrl.text.trim().split(' ');
+        if (parts.length == 2) {
+          final timeParts = parts[0].split(':');
+          final period = parts[1];
+          int hour = int.parse(timeParts[0]);
+          final minute = int.parse(timeParts[1]);
+          if (period == 'PM' && hour != 12) hour += 12;
+          else if (period == 'AM' && hour == 12) hour = 0;
+          current = TimeOfDay(hour: hour, minute: minute);
+        }
       } catch (_) {}
     }
-    final picked =
-    await showTimePicker(context: context, initialTime: current);
+
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: current,
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: const ColorScheme.light(
+              primary: AppColors.green,
+              onPrimary: Colors.white,
+            ),
+          ),
+          child: MediaQuery(
+            data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: false),
+            child: child!,
+          ),
+        );
+      },
+    );
+
     if (picked != null) {
-      row.timeCtrl.text =
-      '${picked.hour.toString().padLeft(2, '0')}:${picked.minute.toString().padLeft(2, '0')}';
+      // Convert to 12-hour format string, e.g. "2:30 PM"
+      int hour = picked.hour;
+      final minute = picked.minute;
+      final period = hour >= 12 ? 'PM' : 'AM';
+      hour = hour % 12;
+      if (hour == 0) hour = 12;
+      row.timeCtrl.text = '$hour:${minute.toString().padLeft(2, '0')} $period';
     }
   }
 

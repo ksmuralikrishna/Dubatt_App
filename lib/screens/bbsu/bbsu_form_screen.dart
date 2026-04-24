@@ -45,6 +45,7 @@ class _BbsuFormScreenState extends State<BbsuFormScreen> {
   final _dateCtrl     = TextEditingController();
   final _startCtrl    = TextEditingController();
   final _endCtrl      = TextEditingController();
+  final Map<TextEditingController, DateTime?> _rawDateTimes = {};
   String _category    = 'BBSU';
 
   final List<_InputRowData> _inputRows = [];
@@ -138,8 +139,19 @@ class _BbsuFormScreenState extends State<BbsuFormScreen> {
 
     _docNoCtrl.text  = record.batchNo;
     _dateCtrl.text   = record.docDate.length >= 10 ? record.docDate.substring(0, 10) : record.docDate;
-    _startCtrl.text  = BbsuService.formatForDatetimeLocal(record.startTime);
-    _endCtrl.text    = BbsuService.formatForDatetimeLocal(record.endTime);
+    // After parsing startCtrl and endCtrl in _loadRecord():
+    final startDt = DateTime.tryParse(record.startTime);
+    if (startDt != null) {
+      _rawDateTimes[_startCtrl] = startDt;
+      _startCtrl.text = DateFormat('yyyy-MM-dd hh:mm a').format(startDt);
+    }
+    final endDt = DateTime.tryParse(record.endTime);
+    if (endDt != null) {
+      _rawDateTimes[_endCtrl] = endDt;
+      _endCtrl.text = DateFormat('yyyy-MM-dd hh:mm a').format(endDt);
+    }
+    // _startCtrl.text  = BbsuService.formatForDatetimeLocal(record.startTime);
+    // _endCtrl.text    = BbsuService.formatForDatetimeLocal(record.endTime);
     _category        = record.category;
 
     if (record.inputDetails.isNotEmpty) {
@@ -234,7 +246,9 @@ class _BbsuFormScreenState extends State<BbsuFormScreen> {
   }
 
   Future<void> _pickDateTime(TextEditingController ctrl) async {
-    final current = ctrl.text.isNotEmpty ? DateTime.tryParse(ctrl.text) ?? DateTime.now() : DateTime.now();
+    final existing = _rawDateTimes[ctrl];
+    final current = existing ?? (ctrl.text.isNotEmpty ? DateTime.tryParse(ctrl.text) ?? DateTime.now() : DateTime.now());
+
     final date = await showDatePicker(
       context: context, initialDate: current,
       firstDate: DateTime(2020), lastDate: DateTime(2030),
@@ -246,8 +260,11 @@ class _BbsuFormScreenState extends State<BbsuFormScreen> {
     if (date == null || !mounted) return;
     final time = await showTimePicker(context: context, initialTime: TimeOfDay.fromDateTime(current));
     if (time == null) return;
-    ctrl.text = DateFormat('yyyy-MM-ddTHH:mm')
-        .format(DateTime(date.year, date.month, date.day, time.hour, time.minute));
+
+    final combined = DateTime(date.year, date.month, date.day, time.hour, time.minute);
+    _rawDateTimes[ctrl] = combined;
+    // Display: yyyy-MM-dd hh:mm AM/PM
+    ctrl.text = DateFormat('yyyy-MM-dd hh:mm a').format(combined);
     setState(() {});
   }
 
@@ -340,8 +357,15 @@ class _BbsuFormScreenState extends State<BbsuFormScreen> {
       'batch_no':   _docNoCtrl.text.trim(),
       'doc_date':   _dateCtrl.text.trim(),
       'category':   _category,
-      'start_time': _startCtrl.text.trim(),
-      'end_time':   _endCtrl.text.trim(),
+      // Replace the start_time and end_time lines:
+      'start_time': _rawDateTimes[_startCtrl] != null
+          ? DateFormat("yyyy-MM-dd'T'HH:mm").format(_rawDateTimes[_startCtrl]!)
+          : _startCtrl.text.trim(),
+      'end_time': _rawDateTimes[_endCtrl] != null
+          ? DateFormat("yyyy-MM-dd'T'HH:mm").format(_rawDateTimes[_endCtrl]!)
+          : _endCtrl.text.trim(),
+      // 'start_time': _startCtrl.text.trim(),
+      // 'end_time':   _endCtrl.text.trim(),
       'input_details':   inputDetails,
       'output_material': outputMaterial,
       'power_consumption': {

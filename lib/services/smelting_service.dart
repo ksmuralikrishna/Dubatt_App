@@ -419,15 +419,44 @@ class SmeltingService {
   }
 
   /// Extracts HH:mm from ISO datetime or returns as-is.
+  // static String? toHHmm(String? raw) {
+  //   if (raw == null || raw.isEmpty) return null;
+  //   if (raw.contains('T')) {
+  //     final parts = raw.split('T');
+  //     if (parts.length == 2 && parts[1].length >= 5) {
+  //       return parts[1].substring(0, 5);
+  //     }
+  //   }
+  //   return raw.length >= 5 ? raw.substring(0, 5) : raw;
+  // }
   static String? toHHmm(String? raw) {
     if (raw == null || raw.isEmpty) return null;
+
+    String timeStr;
     if (raw.contains('T')) {
       final parts = raw.split('T');
       if (parts.length == 2 && parts[1].length >= 5) {
-        return parts[1].substring(0, 5);
+        timeStr = parts[1].substring(0, 5);
+      } else {
+        return null;
       }
+    } else {
+      timeStr = raw.length >= 5 ? raw.substring(0, 5) : raw;
     }
-    return raw.length >= 5 ? raw.substring(0, 5) : raw;
+
+    // Convert 24-hour to 12-hour format
+    final parts = timeStr.split(':');
+    if (parts.length != 2) return timeStr;
+
+    int hour = int.parse(parts[0]);
+    final minute = parts[1];
+    final period = hour >= 12 ? 'PM' : 'AM';
+
+    // Convert to 12-hour format
+    hour = hour % 12;
+    if (hour == 0) hour = 12;
+
+    return '$hour:$minute $period';
   }
 }
 

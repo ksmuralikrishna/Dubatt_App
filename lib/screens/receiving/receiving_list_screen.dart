@@ -398,7 +398,7 @@ class _ReceivingListScreenState extends State<ReceivingListScreen> {
         style: GoogleFonts.outfit(
             fontSize: 13.5, color: AppColors.textDark),
         decoration: InputDecoration(
-          hintText: 'Search by lot no, supplier...',
+          hintText: 'Search by lot no',
           hintStyle: GoogleFonts.outfit(
               fontSize: 13.5, color: AppColors.textMuted),
           prefixIcon: const Icon(Icons.search,

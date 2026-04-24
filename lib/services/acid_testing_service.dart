@@ -85,7 +85,7 @@ class AcidTestingService {
       final params = {
         'page': '$page',
         'per_page': '$perPage',
-        if (search != null && search.isNotEmpty) 'search': search,
+        if (search != null && search.isNotEmpty) 'lot_number': search,
         if (status != null && status != 'all') 'status': status,
       };
       final uri = Uri.parse('$kBaseUrl/acid-testings')
