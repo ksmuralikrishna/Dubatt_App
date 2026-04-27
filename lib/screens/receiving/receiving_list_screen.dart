@@ -126,6 +126,7 @@ class _ReceivingListScreenState extends State<ReceivingListScreen> {
     await Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => ReceivingFormScreen(
         recordId: id,
+        embedInShell: false,
         onLogout: widget.onLogout,
       ),
     ));

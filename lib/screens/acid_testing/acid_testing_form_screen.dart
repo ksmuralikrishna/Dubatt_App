@@ -52,10 +52,12 @@ abstract class _PalletCols {
 class AcidTestingFormScreen extends StatefulWidget {
   final String? recordId;
   final VoidCallback onLogout;
+  final bool embedInShell;
 
   const AcidTestingFormScreen({
     super.key,
     this.recordId,
+    this.embedInShell = true,
     required this.onLogout,
   });
 
@@ -555,11 +557,8 @@ class _AcidTestingFormScreenState
   Widget build(BuildContext context) {
     final hPad = Responsive.hPad(context);
 
-    return AppShell(
-      currentRoute: '/acid-testing',
-      onLogout: widget.onLogout,
-      child: Scaffold(
-        backgroundColor: AppColors.bg,
+    final content = Scaffold(
+      backgroundColor: AppColors.bg,
         body: _isLoading
             ? const Center(
             child: CircularProgressIndicator(color: AppColors.green))
@@ -968,7 +967,13 @@ class _AcidTestingFormScreenState
             ],
           ),
         ),
-      ),
+      );
+
+    if (!widget.embedInShell) return content;
+    return AppShell(
+      currentRoute: '/acid-testing',
+      onLogout: widget.onLogout,
+      child: content,
     );
   }
 }

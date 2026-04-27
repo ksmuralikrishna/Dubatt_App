@@ -102,8 +102,11 @@ class _SmeltingListScreenState extends State<SmeltingListScreen> {
 
   void _openForm({String? id}) async {
     await Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) =>
-          SmeltingFormScreen(recordId: id, onLogout: widget.onLogout),
+      builder: (_) => SmeltingFormScreen(
+        recordId: id,
+        embedInShell: false,
+        onLogout: widget.onLogout,
+      ),
     ));
     _load(reset: true);
   }

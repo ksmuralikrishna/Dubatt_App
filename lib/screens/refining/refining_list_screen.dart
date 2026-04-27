@@ -101,8 +101,11 @@ class _RefiningListScreenState extends State<RefiningListScreen> {
 
   void _openForm({String? id}) async {
     await Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) =>
-          RefiningFormScreen(recordId: id, onLogout: widget.onLogout),
+      builder: (_) => RefiningFormScreen(
+        recordId: id,
+        embedInShell: false,
+        onLogout: widget.onLogout,
+      ),
     ));
     _load(reset: true);
   }

@@ -27,10 +27,12 @@ import '../../services/smelting_service.dart';
 class SmeltingFormScreen extends StatefulWidget {
   final String? recordId;
   final VoidCallback onLogout;
+  final bool embedInShell;
 
   const SmeltingFormScreen({
     super.key,
     this.recordId,
+    this.embedInShell = true,
     required this.onLogout,
   });
 
@@ -751,11 +753,8 @@ class _SmeltingFormScreenState extends State<SmeltingFormScreen> {
   Widget build(BuildContext context) {
     final hPad = Responsive.hPad(context);
 
-    return AppShell(
-      currentRoute: '/smelting',
-      onLogout: widget.onLogout,
-      child: Scaffold(
-        backgroundColor: AppColors.bg,
+    final content = Scaffold(
+      backgroundColor: AppColors.bg,
         body: _isLoading
             ? const Center(child: CircularProgressIndicator(color: AppColors.green))
             : SingleChildScrollView(
@@ -892,9 +891,10 @@ class _SmeltingFormScreenState extends State<SmeltingFormScreen> {
               LayoutBuilder(builder: (_, box) {
                 final wide = box.maxWidth > 700;
                 if (wide) {
-                  const rawCardWidth = 555.0 + 32;
+                  // const rawCardWidth = 555.0 + 32;
                   return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    SizedBox(width: rawCardWidth,child: _RawCard(
+                    // SizedBox(width: rawCardWidth,child: _RawCard(
+                    Expanded(child: _RawCard(
                       rows: _rawRows, isSubmitted: _isSubmitted, materials: _materials,
                       totalQty: _rawTotalQty, totalExp: _rawTotalExpected,
                       onAdd: _isSubmitted ? null : _addRawRow,
@@ -1132,7 +1132,13 @@ class _SmeltingFormScreenState extends State<SmeltingFormScreen> {
             ],
           ),
         ),
-      ),
+      );
+
+    if (!widget.embedInShell) return content;
+    return AppShell(
+      currentRoute: '/smelting',
+      onLogout: widget.onLogout,
+      child: content,
     );
   }
 }

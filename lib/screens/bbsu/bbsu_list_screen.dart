@@ -112,8 +112,11 @@ class _BbsuListScreenState extends State<BbsuListScreen> {
 
   void _openForm({String? id}) async {
     await Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) =>
-          BbsuFormScreen(recordId: id, onLogout: widget.onLogout),
+      builder: (_) => BbsuFormScreen(
+        recordId: id,
+        embedInShell: false,
+        onLogout: widget.onLogout,
+      ),
     ));
     _load(reset: true);
   }

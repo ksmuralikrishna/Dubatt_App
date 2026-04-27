@@ -13,12 +13,14 @@ class ReceivingFormScreen extends StatefulWidget {
   final VoidCallback onLogout;
   final int? localId;
   final bool isLocalOnly;
+  final bool embedInShell;
 
   const ReceivingFormScreen({
     super.key,
     this.recordId,
     this.localId,
     this.isLocalOnly = false,
+    this.embedInShell = true,
     required this.onLogout,
   });
 
@@ -312,244 +314,247 @@ class _ReceivingFormScreenState extends State<ReceivingFormScreen> {
   Widget build(BuildContext context) {
     final hPad = Responsive.hPad(context);
 
-    return AppShell(
-      currentRoute: '/receiving',
-      onLogout: widget.onLogout,
-      child: Scaffold(
-        backgroundColor: AppColors.bg,
-        body: _isLoading
-            ? const Center(
-            child: CircularProgressIndicator(color: AppColors.green))
-            : SingleChildScrollView(
-          padding: EdgeInsets.fromLTRB(hPad, 28, hPad, 100),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 800),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
+    final content = Scaffold(
+      backgroundColor: AppColors.bg,
+      body: _isLoading
+          ? const Center(
+          child: CircularProgressIndicator(color: AppColors.green))
+          : SingleChildScrollView(
+        padding: EdgeInsets.fromLTRB(hPad, 28, hPad, 100),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 800),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
 
-                // ── Page header ──────────────────────────────
-                MesPageHeader(
-                  title: _isSubmitted
-                      ? 'Receiving Record'  // ✅ Changed for submitted records
-                      : (widget.isCreate
-                      ? 'Create Receiving Record'
-                      : 'Edit Receiving Record'),
-                  subtitle: _isSubmitted
-                      ? 'This record has been submitted and cannot be edited'  // ✅ New subtitle
-                      : (widget.isCreate
-                      ? 'Fill in the details'
-                      : 'Lot: ${_lotCtrl.text}'),
-                  actions: [
-                    MesOutlineButton(
-                      label: 'Back',
-                      icon: Icons.arrow_back,
-                      small: true,
-                      onPressed: () => Navigator.of(context).pop(),
+              // ── Page header ──────────────────────────────
+              MesPageHeader(
+                title: _isSubmitted
+                    ? 'Receiving Record'  // ✅ Changed for submitted records
+                    : (widget.isCreate
+                    ? 'Create Receiving Record'
+                    : 'Edit Receiving Record'),
+                subtitle: _isSubmitted
+                    ? 'This record has been submitted and cannot be edited'  // ✅ New subtitle
+                    : (widget.isCreate
+                    ? 'Fill in the details'
+                    : 'Lot: ${_lotCtrl.text}'),
+                actions: [
+                  MesOutlineButton(
+                    label: 'Back',
+                    icon: Icons.arrow_back,
+                    small: true,
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
+                ],
+              ),
+
+              // ── Offline banner ───────────────────────────
+              StreamBuilder<bool>(
+                stream: ConnectivityService().onlineStream,
+                initialData: ConnectivityService().isOnline,
+                builder: (_, snap) {
+                  final online = snap.data ?? true;
+                  if (online) return const SizedBox.shrink();
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 16),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFEF3C7),
+                      borderRadius: BorderRadius.circular(9),
+                      border: Border.all(
+                          color: const Color(0xFFF59E0B)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.wifi_off,
+                            size: 16,
+                            color: Color(0xFFF59E0B)),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'You are offline. Record will sync '
+                                'when connection restores.',
+                            style: GoogleFonts.outfit(
+                              fontSize: 13,
+                              color: const Color(0xFF92400E),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+
+              const SizedBox(height: 20),
+
+              // ── Form card ────────────────────────────────
+              MesCard(
+                padding: const EdgeInsets.all(22),
+                child: Column(
+                  children: [
+                    MesTextField(
+                      label: 'Lot Number',
+                      controller: _lotCtrl,
+                      prefixIcon: Icons.tag,
+                      errorText: _fieldErrors['lot_no'],
+                    ),
+                    const SizedBox(height: 16),
+                    GestureDetector(
+                      onTap: _pickDate,
+                      child: AbsorbPointer(
+                        child: MesTextField(
+                          label: 'Date',
+                          controller: _dateCtrl,
+                          readOnly: true,
+                          prefixIcon:
+                          Icons.calendar_today_outlined,
+                          errorText: _fieldErrors['doc_date'],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('SUPPLIER', style: AppTextStyles.label()),
+                        const SizedBox(height: 5),
+                        SearchableDropdown<String>(
+                          value: _selectedSupplier,
+                          items: _suppliers.map((s) => s.id).toList(),
+                          displayString: (id) => _suppliers.firstWhere(
+                                (s) => s.id == id,
+                            orElse: () => SupplierOption(id: '', name: '—'),
+                          ).name,
+                          hint: 'Select supplier…',
+                          enabled: true,
+                          onChanged: (v) => setState(() => _selectedSupplier = v),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('MATERIAL', style: AppTextStyles.label()),
+                        const SizedBox(height: 5),
+                        SearchableDropdown<String>(
+                          value: _selectedMaterial,
+                          items: _materials.map((m) => m.id).toList(),
+                          displayString: (id) => _materials.firstWhere(
+                                (m) => m.id == id,
+                            orElse: () => MaterialOption(id: '', name: '—'),
+                          ).name,
+                          hint: 'Select material…',
+                          enabled: true,
+                          onChanged: (v) => setState(() => _selectedMaterial = v),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    MesTextField(
+                      label: 'Invoice Quantity',
+                      controller: _invoiceQtyCtrl,
+                      keyboardType:
+                      const TextInputType.numberWithOptions(
+                          decimal: true),
+                    ),
+                    const SizedBox(height: 16),
+                    MesTextField(
+                      label: 'Receive Quantity',
+                      controller: _receiveQtyCtrl,
+                      keyboardType:
+                      const TextInputType.numberWithOptions(
+                          decimal: true),
+                    ),
+                    const SizedBox(height: 16),
+                    DropdownButtonFormField<String>(
+                      value: _selectedUnit,
+                      items: _units
+                          .map((u) => DropdownMenuItem(
+                        value: u,
+                        child: Text(u),
+                      ))
+                          .toList(),
+                      onChanged: (v) => setState(
+                              () => _selectedUnit = v ?? 'KG'),
+                      decoration: InputDecoration(
+                        labelText: 'Unit',
+                        prefixIcon: const Icon(
+                            Icons.straighten_outlined),
+                        border: OutlineInputBorder(
+                            borderRadius:
+                            BorderRadius.circular(9)),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    MesTextField(
+                      label: 'Vehicle Number',
+                      controller: _vehicleCtrl,
+                      prefixIcon:
+                      Icons.local_shipping_outlined,
+                    ),
+                    const SizedBox(height: 16),
+                    MesTextField(
+                      label: 'Remarks',
+                      controller: _remarksCtrl,
+                      prefixIcon: Icons.note_outlined,
+                      maxLines: 3,
                     ),
                   ],
                 ),
+              ),
 
-                // ── Offline banner ───────────────────────────
-                StreamBuilder<bool>(
-                  stream: ConnectivityService().onlineStream,
-                  initialData: ConnectivityService().isOnline,
-                  builder: (_, snap) {
-                    final online = snap.data ?? true;
-                    if (online) return const SizedBox.shrink();
-                    return Container(
-                      margin: const EdgeInsets.only(bottom: 16),
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 10),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFFEF3C7),
-                        borderRadius: BorderRadius.circular(9),
-                        border: Border.all(
-                            color: const Color(0xFFF59E0B)),
+              const SizedBox(height: 20),
+
+              // ── Action buttons ───────────────────────────
+              // Edit mode: Save + Submit side by side
+              // Create mode: Save only
+              if (_isSubmitted)
+                const SizedBox.shrink()  // Hide all buttons when submitted
+              else if (!widget.isCreate)
+                Row(
+                  children: [
+                    // Save button
+                    Expanded(
+                      child: MesButton(
+                        label: 'Save',
+                        icon: Icons.save_outlined,
+                        isLoading: _isSaving,
+                        onPressed:
+                        _isSubmitting ? null : _save,
                       ),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.wifi_off,
-                              size: 16,
-                              color: Color(0xFFF59E0B)),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              'You are offline. Record will sync '
-                                  'when connection restores.',
-                              style: GoogleFonts.outfit(
-                                fontSize: 13,
-                                color: const Color(0xFF92400E),
-                              ),
-                            ),
-                          ),
-                        ],
+                    ),
+                    const SizedBox(width: 12),
+                    // Submit button — only in edit mode
+                    Expanded(
+                      child: _SubmitButton(
+                        isLoading: _isSubmitting,
+                        onPressed: _isSaving ? null : _submit,
                       ),
-                    );
-                  },
+                    ),
+                  ],
+                )
+              else
+                MesButton(
+                  label: 'Create Record',
+                  icon: Icons.save_outlined,
+                  isLoading: _isSaving,
+                  onPressed: _save,
                 ),
-
-                const SizedBox(height: 20),
-
-                // ── Form card ────────────────────────────────
-                MesCard(
-                  padding: const EdgeInsets.all(22),
-                  child: Column(
-                    children: [
-                      MesTextField(
-                        label: 'Lot Number',
-                        controller: _lotCtrl,
-                        prefixIcon: Icons.tag,
-                        errorText: _fieldErrors['lot_no'],
-                      ),
-                      const SizedBox(height: 16),
-                      GestureDetector(
-                        onTap: _pickDate,
-                        child: AbsorbPointer(
-                          child: MesTextField(
-                            label: 'Date',
-                            controller: _dateCtrl,
-                            readOnly: true,
-                            prefixIcon:
-                            Icons.calendar_today_outlined,
-                            errorText: _fieldErrors['doc_date'],
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('SUPPLIER', style: AppTextStyles.label()),
-                          const SizedBox(height: 5),
-                          SearchableDropdown<String>(
-                            value: _selectedSupplier,
-                            items: _suppliers.map((s) => s.id).toList(),
-                            displayString: (id) => _suppliers.firstWhere(
-                                  (s) => s.id == id,
-                              orElse: () => SupplierOption(id: '', name: '—'),
-                            ).name,
-                            hint: 'Select supplier…',
-                            enabled: true,
-                            onChanged: (v) => setState(() => _selectedSupplier = v),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('MATERIAL', style: AppTextStyles.label()),
-                          const SizedBox(height: 5),
-                          SearchableDropdown<String>(
-                            value: _selectedMaterial,
-                            items: _materials.map((m) => m.id).toList(),
-                            displayString: (id) => _materials.firstWhere(
-                                  (m) => m.id == id,
-                              orElse: () => MaterialOption(id: '', name: '—'),
-                            ).name,
-                            hint: 'Select material…',
-                            enabled: true,
-                            onChanged: (v) => setState(() => _selectedMaterial = v),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      MesTextField(
-                        label: 'Invoice Quantity',
-                        controller: _invoiceQtyCtrl,
-                        keyboardType:
-                        const TextInputType.numberWithOptions(
-                            decimal: true),
-                      ),
-                      const SizedBox(height: 16),
-                      MesTextField(
-                        label: 'Receive Quantity',
-                        controller: _receiveQtyCtrl,
-                        keyboardType:
-                        const TextInputType.numberWithOptions(
-                            decimal: true),
-                      ),
-                      const SizedBox(height: 16),
-                      DropdownButtonFormField<String>(
-                        value: _selectedUnit,
-                        items: _units
-                            .map((u) => DropdownMenuItem(
-                          value: u,
-                          child: Text(u),
-                        ))
-                            .toList(),
-                        onChanged: (v) => setState(
-                                () => _selectedUnit = v ?? 'KG'),
-                        decoration: InputDecoration(
-                          labelText: 'Unit',
-                          prefixIcon: const Icon(
-                              Icons.straighten_outlined),
-                          border: OutlineInputBorder(
-                              borderRadius:
-                              BorderRadius.circular(9)),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      MesTextField(
-                        label: 'Vehicle Number',
-                        controller: _vehicleCtrl,
-                        prefixIcon:
-                        Icons.local_shipping_outlined,
-                      ),
-                      const SizedBox(height: 16),
-                      MesTextField(
-                        label: 'Remarks',
-                        controller: _remarksCtrl,
-                        prefixIcon: Icons.note_outlined,
-                        maxLines: 3,
-                      ),
-                    ],
-                  ),
-                ),
-
-                const SizedBox(height: 20),
-
-                // ── Action buttons ───────────────────────────
-                // Edit mode: Save + Submit side by side
-                // Create mode: Save only
-                if (_isSubmitted)
-                  const SizedBox.shrink()  // Hide all buttons when submitted
-                else if (!widget.isCreate)
-                  Row(
-                    children: [
-                      // Save button
-                      Expanded(
-                        child: MesButton(
-                          label: 'Save',
-                          icon: Icons.save_outlined,
-                          isLoading: _isSaving,
-                          onPressed:
-                          _isSubmitting ? null : _save,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      // Submit button — only in edit mode
-                      Expanded(
-                        child: _SubmitButton(
-                          isLoading: _isSubmitting,
-                          onPressed: _isSaving ? null : _submit,
-                        ),
-                      ),
-                    ],
-                  )
-                else
-                  MesButton(
-                    label: 'Create Record',
-                    icon: Icons.save_outlined,
-                    isLoading: _isSaving,
-                    onPressed: _save,
-                  ),
-              ],
-            ),
+            ],
           ),
         ),
       ),
+    );
+
+    if (!widget.embedInShell) return content;
+    return AppShell(
+      currentRoute: '/receiving',
+      onLogout: widget.onLogout,
+      child: content,
     );
   }
 }

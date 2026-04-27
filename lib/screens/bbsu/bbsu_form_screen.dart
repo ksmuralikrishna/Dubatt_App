@@ -27,10 +27,12 @@ import '../../services/bbsu_service.dart';
 class BbsuFormScreen extends StatefulWidget {
   final String? recordId;
   final VoidCallback onLogout;
+  final bool embedInShell;
 
   const BbsuFormScreen({
     super.key,
     this.recordId,
+    this.embedInShell = true,
     required this.onLogout,
   });
 
@@ -118,9 +120,11 @@ class _BbsuFormScreenState extends State<BbsuFormScreen> {
 
     setState(() => _isPreloadingLots = true);
     try {
-      await BbsuService().preloadAcidSummariesForLots(
-        _lots.map((l) => l.lotNumber).toList(),
-      );
+      // await BbsuService().preloadAcidSummariesForLots(
+      //   _lots.map((l) => l.lotNumber).toList(),
+      // );
+      await BbsuService().preloadAllAcidSummariesForLots();
+
     } finally {
       if (mounted) {
         setState(() => _isPreloadingLots = false);
@@ -449,11 +453,8 @@ class _BbsuFormScreenState extends State<BbsuFormScreen> {
   Widget build(BuildContext context) {
     final hPad = Responsive.hPad(context);
 
-    return AppShell(
-      currentRoute: '/bbsu',
-      onLogout: widget.onLogout,
-      child: Scaffold(
-        backgroundColor: AppColors.bg,
+    final content = Scaffold(
+      backgroundColor: AppColors.bg,
         body: _isLoading
             ? const Center(child: CircularProgressIndicator(color: AppColors.green))
             : SingleChildScrollView(
@@ -704,7 +705,13 @@ class _BbsuFormScreenState extends State<BbsuFormScreen> {
             ],
           ),
         ),
-      ),
+      );
+
+    if (!widget.embedInShell) return content;
+    return AppShell(
+      currentRoute: '/bbsu',
+      onLogout: widget.onLogout,
+      child: content,
     );
   }
 }

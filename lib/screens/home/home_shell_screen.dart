@@ -23,6 +23,7 @@ class HomeShellScreen extends StatefulWidget {
 
 class _HomeShellScreenState extends State<HomeShellScreen> {
   late String _currentRoute;
+  final GlobalKey<NavigatorState> _localNavKey = GlobalKey<NavigatorState>();
 
   static const _routes = <String>[
     '/dashboard',
@@ -51,18 +52,27 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
       onNavigate: (route) {
         if (_routes.contains(route)) {
           setState(() => _currentRoute = route);
+          _localNavKey.currentState?.popUntil((r) => r.isFirst);
         }
       },
-      child: IndexedStack(
-        index: _index,
-        children: [
-          DashboardScreen(onLogout: widget.onLogout, embedInShell: false),
-          ReceivingListScreen(onLogout: widget.onLogout, embedInShell: false),
-          AcidTestingListScreen(onLogout: widget.onLogout, embedInShell: false),
-          BbsuListScreen(onLogout: widget.onLogout, embedInShell: false),
-          SmeltingListScreen(onLogout: widget.onLogout, embedInShell: false),
-          RefiningListScreen(onLogout: widget.onLogout, embedInShell: false),
-        ],
+      child: Navigator(
+        key: _localNavKey,
+        onGenerateRoute: (settings) {
+          return PageRouteBuilder(
+            pageBuilder: (_, __, ___) => IndexedStack(
+              index: _index,
+              children: [
+                DashboardScreen(onLogout: widget.onLogout, embedInShell: false),
+                ReceivingListScreen(onLogout: widget.onLogout, embedInShell: false),
+                AcidTestingListScreen(onLogout: widget.onLogout, embedInShell: false),
+                BbsuListScreen(onLogout: widget.onLogout, embedInShell: false),
+                SmeltingListScreen(onLogout: widget.onLogout, embedInShell: false),
+                RefiningListScreen(onLogout: widget.onLogout, embedInShell: false),
+              ],
+            ),
+            transitionDuration: Duration.zero,
+          );
+        },
       ),
     );
   }

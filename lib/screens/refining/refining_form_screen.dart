@@ -1,27 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // refining_form_screen.dart
-//
-// SECTION 1 — Refining Log Sheet header
-//   batch_no (auto) | pot_no | material (searchable dropdown) | date
-//
-// SECTION 2 — Input (two-column)
-//   Left:  Lead Raw Material (dynamic rows)
-//          material SDD | qty (tap → Smelting Lot Modal) | delete
-//   Right: Chemicals and Metals (dynamic rows)
-//          material SDD | qty (tap → Smelting Lot Modal) | delete
-//
-// SECTION 3 — Consumption (table layout with 3 col groups)
-//   LPG:         lpg_initial | lpg_final → lpg_consumption (auto)
-//   Electricity: electricity_initial | electricity_final → electricity_consumption (auto)
-//   Liquid O2:   oxygen_flow_nm3 (manual) | oxygen_flow_kg = nm3×1.429 (auto)
-//                oxygen_flow_time (manual hr) | oxygen_consumption = time×flow_kg (auto)
-//
-// SECTION 4 — Process Details (dynamic rows)
-//   process name (searchable, from API) | start+END btn | end+END btn | total time | delete
-//
-// SECTION 5 — Output (two-column)
-//   Left:  Finished Goods (dynamic rows) — material SDD | qty (→ block modal) | delete
-//   Right: Drosses (dynamic rows)        — material SDD | qty (→ block modal) | delete
 // ─────────────────────────────────────────────────────────────────────────────
 
 import 'package:dubatt_app/services/connectivity_service.dart';
@@ -36,13 +14,26 @@ import '../../widgets/common/app_shell.dart';
 import '../../models/refining_model.dart';
 import '../../services/refining_service.dart';
 
+// ── Consumption table column widths ──────────────────────────────────────────
+const double _kLabelW   = 110.0;
+const double _kLpgKgW   = 140.0;
+const double _kLpgLtrW  = 140.0;
+const double _kLpg2KgW  = 140.0;
+const double _kLpg2LtrW = 140.0;
+const double _kElecW    = 140.0;
+const double _kO2W      = 260.0;
+double get _kTotalW =>
+    _kLabelW + _kLpgKgW + _kLpgLtrW + _kLpg2KgW + _kLpg2LtrW + _kElecW + _kO2W;
+
 class RefiningFormScreen extends StatefulWidget {
   final String? recordId;
   final VoidCallback onLogout;
+  final bool embedInShell;
 
   const RefiningFormScreen({
     super.key,
     this.recordId,
+    this.embedInShell = true,
     required this.onLogout,
   });
 
@@ -57,7 +48,7 @@ class _RefiningFormScreenState extends State<RefiningFormScreen> {
   final _batchNoCtrl = TextEditingController();
   final _potNoCtrl   = TextEditingController();
   final _dateCtrl    = TextEditingController();
-  String? _materialId;   // selected from searchable dropdown
+  String? _materialId;
 
   // ── Materials / process names ───────────────────────────────────────────────
   List<RefiningMaterialOption> _materials    = [];
@@ -78,29 +69,32 @@ class _RefiningFormScreenState extends State<RefiningFormScreen> {
   final _elecFinalCtrl = TextEditingController();
   final _o2Nm3Ctrl     = TextEditingController();
   final _o2TimeCtrl    = TextEditingController();
-  // Auto-calculated (read-only display)
-  String _lpgConsumed  = '—';
-  String _lpg2Consumed = '—';
-  String _elecConsumed = '—';
+
+  // Auto-calculated display strings
+  String _lpgConsumed     = '—';
+  String _lpgConsumedLtr  = '—';  // FIX 1: added
+  String _lpg2Consumed    = '—';
+  String _lpg2ConsumedLtr = '—';  // FIX 1: added
+  String _elecConsumed    = '—';
 
   double? _o2FlowKg;
   double? _o2Consumption;
 
-  // ── Section 4 — Process rows (dynamic) ─────────────────────────────────────
+  // ── Section 4 — Process rows ─────────────────────────────────────────────────
   final List<_ProcRow> _procRows = [];
   int _totalProcMins = 0;
 
-  // ── Section 5 — Output rows ─────────────────────────────────────────────────
+  // ── Section 5 — Output rows ──────────────────────────────────────────────────
   final List<_OutputRow> _fgRows    = [];
   final List<_OutputRow> _drossRows = [];
   double _fgTotal    = 0;
   double _drossTotal = 0;
 
-  // ── UI state ────────────────────────────────────────────────────────────────
-  bool _isLoading    = true;
-  bool _isSaving     = false;
-  bool _isSubmitting = false;
-  bool _isSubmitted  = false;
+  // ── UI state ─────────────────────────────────────────────────────────────────
+  bool _isLoading         = true;
+  bool _isSaving          = false;
+  bool _isSubmitting      = false;
+  bool _isSubmitted       = false;
   String? _currentId;
   bool _isPreloadingStock = false;
 
@@ -113,11 +107,9 @@ class _RefiningFormScreenState extends State<RefiningFormScreen> {
   @override
   void dispose() {
     _batchNoCtrl.dispose(); _potNoCtrl.dispose(); _dateCtrl.dispose();
-
     _lpgInitCtrl.dispose(); _lpgFinalCtrl.dispose();
     _lpg2InitCtrl.dispose(); _lpg2FinalCtrl.dispose();
     _elecInitCtrl.dispose(); _elecFinalCtrl.dispose();
-
     _o2Nm3Ctrl.dispose(); _o2TimeCtrl.dispose();
     for (final r in _rawRows)   r.dispose();
     for (final c in _chemRows)  c.dispose();
@@ -140,51 +132,37 @@ class _RefiningFormScreenState extends State<RefiningFormScreen> {
       await _loadRecord();
     }
     setState(() => _isLoading = false);
-
-    // Preload smelting stock for all materials to support full offline use.
-     unawaited(_preloadAllStockForOffline());
+    unawaited(_preloadAllStockForOffline());
   }
 
   Future<void> _preloadAllStockForOffline() async {
     if (!mounted || _isPreloadingStock) return;
     if (!ConnectivityService().isOnline || _materials.isEmpty) return;
-
     setState(() => _isPreloadingStock = true);
     try {
       await RefiningService().preloadSmeltingLotsForMaterials();
     } finally {
-      if (mounted) {
-        setState(() => _isPreloadingStock = false);
-      } else {
-        _isPreloadingStock = false;
-      }
+      if (mounted) setState(() => _isPreloadingStock = false);
+      else _isPreloadingStock = false;
     }
   }
+
   String? _convertTo24Hour(String? time12hr) {
     if (time12hr == null || time12hr.isEmpty) return null;
-
     try {
       final parts = time12hr.trim().split(' ');
       if (parts.length != 2) return null;
-
       final timeParts = parts[0].split(':');
       if (timeParts.length != 2) return null;
-
       int hour = int.parse(timeParts[0]);
       final minute = int.parse(timeParts[1]);
       final period = parts[1].toUpperCase();
-
-      if (period == 'PM' && hour != 12) {
-        hour += 12;
-      } else if (period == 'AM' && hour == 12) {
-        hour = 0;
-      }
-
+      if (period == 'PM' && hour != 12) hour += 12;
+      else if (period == 'AM' && hour == 12) hour = 0;
       return '${hour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')}';
-    } catch (_) {
-      return null;
-    }
+    } catch (_) { return null; }
   }
+
   Future<void> _loadRecord() async {
     final r = await RefiningService().getOne(widget.recordId!);
     if (r == null) { _showSnack('Failed to load record.', error: true); return; }
@@ -295,47 +273,28 @@ class _RefiningFormScreenState extends State<RefiningFormScreen> {
     final e = r.endCtrl.text;
     if (s.isNotEmpty && e.isNotEmpty) {
       try {
-        // Parse 12-hour format with AM/PM
         int getMinutesFrom12Hour(String timeStr) {
-          // Handle formats like "2:30 PM", "12:00 AM", "02:30 PM"
           final parts = timeStr.trim().split(' ');
           if (parts.length != 2) return 0;
-
           final timeParts = parts[0].split(':');
           if (timeParts.length != 2) return 0;
-
           int hour = int.parse(timeParts[0]);
           final minute = int.parse(timeParts[1]);
           final period = parts[1].toUpperCase();
-
-          if (period == 'PM' && hour != 12) {
-            hour += 12;
-          } else if (period == 'AM' && hour == 12) {
-            hour = 0;
-          }
-
+          if (period == 'PM' && hour != 12) hour += 12;
+          else if (period == 'AM' && hour == 12) hour = 0;
           return hour * 60 + minute;
         }
-
         final startMins = getMinutesFrom12Hour(s);
-        final endMins = getMinutesFrom12Hour(e);
-
+        final endMins   = getMinutesFrom12Hour(e);
         int m = endMins - startMins;
-        if (m < 0) m += 1440; // Add 24 hours if end time is next day
-
+        if (m < 0) m += 1440;
         r.totalMins = m;
-
-        // Format as "X hr Y min" or just "Y min" if less than 60 minutes
-        final hours = m ~/ 60;
+        final hours   = m ~/ 60;
         final minutes = m % 60;
-
-        if (hours > 0 && minutes > 0) {
-          r.totalCtrl.text = '${hours} hr ${minutes} min';
-        } else if (hours > 0) {
-          r.totalCtrl.text = '${hours} hr';
-        } else {
-          r.totalCtrl.text = '${minutes} min';
-        }
+        if (hours > 0 && minutes > 0)      r.totalCtrl.text = '$hours hr $minutes min';
+        else if (hours > 0)                r.totalCtrl.text = '$hours hr';
+        else                               r.totalCtrl.text = '$minutes min';
       } catch (_) {
         r.totalMins = 0;
         r.totalCtrl.text = '';
@@ -358,9 +317,7 @@ class _RefiningFormScreenState extends State<RefiningFormScreen> {
       materials:    _materials,
       materialId:   data?.materialId ?? '',
       totalQty:     data?.totalQty ?? 0,
-      outputBlocks: data?.outputBlocks
-          .map((b) => b.blockWeight)
-          .toList() ?? [],
+      outputBlocks: data?.outputBlocks.map((b) => b.blockWeight).toList() ?? [],
     ));
     _recalcFGTotal();
     if (!_isLoading) setState(() {});
@@ -383,9 +340,7 @@ class _RefiningFormScreenState extends State<RefiningFormScreen> {
       materials:    _materials,
       materialId:   data?.materialId ?? '',
       totalQty:     data?.totalQty ?? 0,
-      outputBlocks: data?.outputBlocks
-          .map((b) => b.blockWeight)
-          .toList() ?? [],
+      outputBlocks: data?.outputBlocks.map((b) => b.blockWeight).toList() ?? [],
     ));
     _recalcDrossTotal();
     if (!_isLoading) setState(() {});
@@ -403,19 +358,26 @@ class _RefiningFormScreenState extends State<RefiningFormScreen> {
     setState(() => _drossTotal = t);
   }
 
-  // ── Consumption calcs ───────────────────────────────────────────────────────
+  // ── Consumption calcs ──────────────────────────────────────────────────────
+  // FIX 2: both _calcLpg / _calcLpg2 now populate the LTR fields
   void _calcLpg() {
-    final i = double.tryParse(_lpgInitCtrl.text);
-    final f = double.tryParse(_lpgFinalCtrl.text);
-    setState(() => _lpgConsumed = (i != null && f != null && f >= i)
-        ? '${(f - i).toStringAsFixed(3)} m³' : '—');
+    final i    = double.tryParse(_lpgInitCtrl.text);
+    final f    = double.tryParse(_lpgFinalCtrl.text);
+    final diff = (i != null && f != null && f >= i) ? f - i : null;
+    setState(() {
+      _lpgConsumed    = diff != null ? '${diff.toStringAsFixed(3)} m³' : '—';
+      _lpgConsumedLtr = diff != null ? (diff * 1.98).toStringAsFixed(3)  : '—';
+    });
   }
 
   void _calcLpg2() {
-    final i = double.tryParse(_lpg2InitCtrl.text);
-    final f = double.tryParse(_lpg2FinalCtrl.text);
-    setState(() => _lpg2Consumed = (i != null && f != null && f >= i)
-        ? '${(f - i).toStringAsFixed(3)} m³' : '—');
+    final i    = double.tryParse(_lpg2InitCtrl.text);
+    final f    = double.tryParse(_lpg2FinalCtrl.text);
+    final diff = (i != null && f != null && f >= i) ? f - i : null;
+    setState(() {
+      _lpg2Consumed    = diff != null ? '${diff.toStringAsFixed(3)} m³' : '—';
+      _lpg2ConsumedLtr = diff != null ? (diff * 1.98).toStringAsFixed(3) : '—';
+    });
   }
 
   void _calcElec() {
@@ -433,41 +395,26 @@ class _RefiningFormScreenState extends State<RefiningFormScreen> {
     setState(() { _o2FlowKg = kg; _o2Consumption = cons; });
   }
 
-  // ── Pickers ─────────────────────────────────────────────────────────────────
+  // ── Pickers ────────────────────────────────────────────────────────────────
   Future<void> _pickDate() async {
     final i = DateTime.tryParse(_dateCtrl.text) ?? DateTime.now();
     final p = await showDatePicker(
       context: context, initialDate: i,
       firstDate: DateTime(2020), lastDate: DateTime(2030),
       builder: (ctx, child) => Theme(
-        data: Theme.of(ctx).copyWith(colorScheme: const ColorScheme.light(
-            primary: AppColors.green, onPrimary: Colors.white)),
+        data: Theme.of(ctx).copyWith(
+            colorScheme: const ColorScheme.light(
+                primary: AppColors.green, onPrimary: Colors.white)),
         child: child!,
       ),
     );
     if (p != null) setState(() => _dateCtrl.text = DateFormat('yyyy-MM-dd').format(p));
   }
 
-  // Future<void> _pickTime(TextEditingController ctrl) async {
-  //   TimeOfDay current = TimeOfDay.now();
-  //   if (ctrl.text.isNotEmpty) {
-  //     try {
-  //       final parts = ctrl.text.split(':');
-  //       current = TimeOfDay(hour: int.parse(parts[0]), minute: int.parse(parts[1]));
-  //     } catch (_) {}
-  //   }
-  //   final p = await showTimePicker(context: context, initialTime: current);
-  //   if (p != null) {
-  //     setState(() => ctrl.text =
-  //     '${p.hour.toString().padLeft(2,'0')}:${p.minute.toString().padLeft(2,'0')}');
-  //   }
-  // }
-
   Future<void> _pickTime(TextEditingController ctrl) async {
     TimeOfDay current = TimeOfDay.now();
     if (ctrl.text.isNotEmpty) {
       try {
-        // Parse 12-hour format
         final parts = ctrl.text.trim().split(' ');
         if (parts.length == 2) {
           final timeParts = parts[0].split(':');
@@ -475,13 +422,8 @@ class _RefiningFormScreenState extends State<RefiningFormScreen> {
             int hour = int.parse(timeParts[0]);
             final minute = int.parse(timeParts[1]);
             final period = parts[1].toUpperCase();
-
-            // Convert to 24-hour for TimeOfDay
-            if (period == 'PM' && hour != 12) {
-              hour += 12;
-            } else if (period == 'AM' && hour == 12) {
-              hour = 0;
-            }
+            if (period == 'PM' && hour != 12) hour += 12;
+            else if (period == 'AM' && hour == 12) hour = 0;
             current = TimeOfDay(hour: hour, minute: minute);
           }
         }
@@ -489,19 +431,16 @@ class _RefiningFormScreenState extends State<RefiningFormScreen> {
     }
     final p = await showTimePicker(context: context, initialTime: current);
     if (p != null) {
-      // Convert to 12-hour format
       int hour = p.hour;
       final minute = p.minute;
       final period = hour >= 12 ? 'PM' : 'AM';
-
       hour = hour % 12;
       if (hour == 0) hour = 12;
-
       setState(() => ctrl.text = '$hour:${minute.toString().padLeft(2, '0')} $period');
     }
   }
 
-  // ── Smelting lot modal ──────────────────────────────────────────────────────
+  // ── Smelting lot modal ─────────────────────────────────────────────────────
   Future<void> _openSmtModal({
     required String materialId,
     required String materialName,
@@ -512,7 +451,6 @@ class _RefiningFormScreenState extends State<RefiningFormScreen> {
       _showSnack('Please select a material first.', error: true);
       return;
     }
-
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Row(children: [
         const SizedBox(width: 16, height: 16,
@@ -527,33 +465,27 @@ class _RefiningFormScreenState extends State<RefiningFormScreen> {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
       margin: const EdgeInsets.all(16),
     ));
-
     final lots = await RefiningService().getSmeltingLots(
-      materialId,
-      excludeRefiningId: _currentId,
+      materialId, excludeRefiningId: _currentId,
     );
-
     if (!mounted) return;
-
     final existing = isRaw
         ? _rawRows[rowIndex].smtSelections
         : _chemRows[rowIndex].smtSelections;
-
     await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (_) => _SmeltingLotModal(
-        materialName:      materialName,
-        lots:              lots,
-        isOffline:         !ConnectivityService().isOnline,
+        materialName: materialName, lots: lots,
+        isOffline: !ConnectivityService().isOnline,
         existingSelections: existing,
         onConfirm: (selections) {
           final totalQty = selections.fold<double>(0, (s, r) => s + r.qty);
           setState(() {
             if (isRaw) {
-              _rawRows[rowIndex].smtSelections  = selections;
-              _rawRows[rowIndex].qtyCtrl.text   = totalQty.toStringAsFixed(3);
+              _rawRows[rowIndex].smtSelections = selections;
+              _rawRows[rowIndex].qtyCtrl.text  = totalQty.toStringAsFixed(3);
               _recalcRawTotal();
             } else {
               _chemRows[rowIndex].smtSelections = selections;
@@ -566,13 +498,10 @@ class _RefiningFormScreenState extends State<RefiningFormScreen> {
     );
   }
 
-  // ── Output block modal ──────────────────────────────────────────────────────
-  Future<void> _openOutputModal({
-    required bool isFG,
-    required int rowIndex,
-  }) async {
-    final rows    = isFG ? _fgRows : _drossRows;
-    final row     = rows[rowIndex];
+  // ── Output block modal ─────────────────────────────────────────────────────
+  Future<void> _openOutputModal({required bool isFG, required int rowIndex}) async {
+    final rows = isFG ? _fgRows : _drossRows;
+    final row  = rows[rowIndex];
     if (row.materialId.isEmpty) {
       _showSnack('Please select a material first.', error: true);
       return;
@@ -580,15 +509,14 @@ class _RefiningFormScreenState extends State<RefiningFormScreen> {
     final matName = _materials.firstWhere(
             (m) => m.id == row.materialId,
         orElse: () => RefiningMaterialOption(id: '', name: '—')).name;
-
     await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (_) => _OutputBlockModal(
-        title:       isFG ? 'Finished Goods QTY Window' : 'Dross QTY Window',
+        title:        isFG ? 'Finished Goods QTY Window' : 'Dross QTY Window',
         materialName: matName,
-        blocks:      List<double>.from(row.outputBlocks),
+        blocks:       List<double>.from(row.outputBlocks),
         onConfirm: (blocks) {
           final total = blocks.fold<double>(0, (s, v) => s + (v > 0 ? v : 0));
           setState(() {
@@ -601,7 +529,7 @@ class _RefiningFormScreenState extends State<RefiningFormScreen> {
     );
   }
 
-  // ── Build payload ────────────────────────────────────────────────────────────
+  // ── Build payload ──────────────────────────────────────────────────────────
   Map<String, dynamic>? _buildPayload() {
     if (_dateCtrl.text.isEmpty) {
       _showSnack('Date is required.', error: true); return null;
@@ -612,12 +540,10 @@ class _RefiningFormScreenState extends State<RefiningFormScreen> {
     for (final r in _rawRows) {
       if (r.materialId.isEmpty) continue;
       rawMats.add({
-        'raw_material_id':    r.materialId,
-        'qty':                double.tryParse(r.qtyCtrl.text) ?? 0,
-        'smelting_batch_id':  r.smtSelections.isNotEmpty
-            ? r.smtSelections.first.smtId : null,
-        'smelting_batch_no':  r.smtSelections.isNotEmpty
-            ? r.smtSelections.first.smtNo : null,
+        'raw_material_id':     r.materialId,
+        'qty':                 double.tryParse(r.qtyCtrl.text) ?? 0,
+        'smelting_batch_id':   r.smtSelections.isNotEmpty ? r.smtSelections.first.smtId : null,
+        'smelting_batch_no':   r.smtSelections.isNotEmpty ? r.smtSelections.first.smtNo : null,
         'smelting_selections': r.smtSelections.map((s) => s.toJson()).toList(),
       });
     }
@@ -626,12 +552,10 @@ class _RefiningFormScreenState extends State<RefiningFormScreen> {
     for (final c in _chemRows) {
       if (c.materialId.isEmpty) continue;
       chems.add({
-        'chemical_id':        c.materialId,
-        'qty':                double.tryParse(c.qtyCtrl.text) ?? 0,
-        'smelting_batch_id':  c.smtSelections.isNotEmpty
-            ? c.smtSelections.first.smtId : null,
-        'smelting_batch_no':  c.smtSelections.isNotEmpty
-            ? c.smtSelections.first.smtNo : null,
+        'chemical_id':         c.materialId,
+        'qty':                 double.tryParse(c.qtyCtrl.text) ?? 0,
+        'smelting_batch_id':   c.smtSelections.isNotEmpty ? c.smtSelections.first.smtId : null,
+        'smelting_batch_no':   c.smtSelections.isNotEmpty ? c.smtSelections.first.smtNo : null,
         'smelting_selections': c.smtSelections.map((s) => s.toJson()).toList(),
       });
     }
@@ -641,9 +565,9 @@ class _RefiningFormScreenState extends State<RefiningFormScreen> {
       if (p.processName.isEmpty) continue;
       procDetails.add({
         'refining_process': p.processName,
-        'start_time':       p.startCtrl.text.isNotEmpty
+        'start_time': p.startCtrl.text.isNotEmpty
             ? RefiningService.toIsoDateTime(date, p.startCtrl.text) : null,
-        'end_time':         p.endCtrl.text.isNotEmpty
+        'end_time': p.endCtrl.text.isNotEmpty
             ? RefiningService.toIsoDateTime(date, p.endCtrl.text) : null,
       });
     }
@@ -676,38 +600,44 @@ class _RefiningFormScreenState extends State<RefiningFormScreen> {
       }
     }
 
-    final lpgInit   = double.tryParse(_lpgInitCtrl.text);
-    final lpgFin    = double.tryParse(_lpgFinalCtrl.text);
-    final lpg2Init  = double.tryParse(_lpg2InitCtrl.text);
-    final lpg2Fin   = double.tryParse(_lpg2FinalCtrl.text);
-    final elecInit  = double.tryParse(_elecInitCtrl.text);
-    final elecFin   = double.tryParse(_elecFinalCtrl.text);
+    final lpgInit  = double.tryParse(_lpgInitCtrl.text);
+    final lpgFin   = double.tryParse(_lpgFinalCtrl.text);
+    final lpg2Init = double.tryParse(_lpg2InitCtrl.text);
+    final lpg2Fin  = double.tryParse(_lpg2FinalCtrl.text);
+    final elecInit = double.tryParse(_elecInitCtrl.text);
+    final elecFin  = double.tryParse(_elecFinalCtrl.text);
+
+    final lpgDiff  = (lpgInit  != null && lpgFin  != null && lpgFin  >= lpgInit)  ? lpgFin  - lpgInit  : null;
+    final lpg2Diff = (lpg2Init != null && lpg2Fin != null && lpg2Fin >= lpg2Init) ? lpg2Fin - lpg2Init : null;
 
     return {
       'batch_no':    _batchNoCtrl.text.trim(),
-      'pot_no':      _potNoCtrl.text.trim().isNotEmpty
-          ? _potNoCtrl.text.trim() : null,
+      'pot_no':      _potNoCtrl.text.trim().isNotEmpty ? _potNoCtrl.text.trim() : null,
       'material_id': _materialId,
       'date':        date,
 
       'lpg_initial':             lpgInit,
       'lpg_final':               lpgFin,
-      'lpg_consumption':         (lpgInit != null && lpgFin != null && lpgFin >= lpgInit)
-          ? lpgFin - lpgInit : null,
+      'lpg_consumption':         lpgDiff,
+      // FIX 3: LTR values included in payload
+      'lpg_consumption_ltr':     lpgDiff  != null ? lpgDiff  * 1.98 : null,
+
       'lpg2_initial':            lpg2Init,
       'lpg2_final':              lpg2Fin,
-      'lpg2_consumption':        (lpg2Init != null && lpg2Fin != null && lpg2Fin >= lpg2Init)
-          ? lpg2Fin - lpg2Init : null,
-      'electricity_initial':     elecInit,
+      'lpg2_consumption':        lpg2Diff,
+      'lpg2_consumption_ltr':    lpg2Diff != null ? lpg2Diff * 1.98 : null,
 
+      'electricity_initial':     elecInit,
       'electricity_final':       elecFin,
       'electricity_consumption': (elecInit != null && elecFin != null && elecFin >= elecInit)
           ? elecFin - elecInit : null,
-      'oxygen_flow_nm3':   double.tryParse(_o2Nm3Ctrl.text),
-      'oxygen_flow_kg':    _o2FlowKg,
-      'oxygen_flow_time':  double.tryParse(_o2TimeCtrl.text),
+
+      'oxygen_flow_nm3':    double.tryParse(_o2Nm3Ctrl.text),
+      'oxygen_flow_kg':     _o2FlowKg,
+      'oxygen_flow_time':   double.tryParse(_o2TimeCtrl.text),
       'oxygen_consumption': _o2Consumption,
-      'total_process_time': _totalProcMins,
+
+      'total_process_time':     _totalProcMins,
       'raw_materials':          rawMats,
       'chemicals':              chems,
       'process_details':        procDetails,
@@ -718,7 +648,7 @@ class _RefiningFormScreenState extends State<RefiningFormScreen> {
     };
   }
 
-  // ── Save ─────────────────────────────────────────────────────────────────────
+  // ── Save ───────────────────────────────────────────────────────────────────
   Future<void> _save() async {
     final payload = _buildPayload();
     if (payload == null) return;
@@ -745,7 +675,7 @@ class _RefiningFormScreenState extends State<RefiningFormScreen> {
     }
   }
 
-  // ── Submit ────────────────────────────────────────────────────────────────────
+  // ── Submit ─────────────────────────────────────────────────────────────────
   Future<void> _submit() async {
     if (!ConnectivityService().isOnline) {
       _showSnack('You are offline. Please connect to submit.', error: true);
@@ -767,8 +697,7 @@ class _RefiningFormScreenState extends State<RefiningFormScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: Text('Cancel',
-                style: GoogleFonts.outfit(color: AppColors.textMuted)),
+            child: Text('Cancel', style: GoogleFonts.outfit(color: AppColors.textMuted)),
           ),
           ElevatedButton(
             onPressed: () => Navigator.of(ctx).pop(true),
@@ -787,8 +716,12 @@ class _RefiningFormScreenState extends State<RefiningFormScreen> {
     final error = await RefiningService().submit(_currentId!);
     if (!mounted) return;
     setState(() => _isSubmitting = false);
-    if (error == null) { _showSnack('Batch submitted successfully.'); Navigator.of(context).pop(); }
-    else { _showSnack(error, error: true); }
+    if (error == null) {
+      _showSnack('Batch submitted successfully.');
+      Navigator.of(context).pop();
+    } else {
+      _showSnack(error, error: true);
+    }
   }
 
   void _showSnack(String msg, {bool error = false}) {
@@ -808,16 +741,13 @@ class _RefiningFormScreenState extends State<RefiningFormScreen> {
     ));
   }
 
-  // ── BUILD ─────────────────────────────────────────────────────────────────────
+  // ── BUILD ──────────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
     final hPad = Responsive.hPad(context);
 
-    return AppShell(
-      currentRoute: '/refining',
-      onLogout: widget.onLogout,
-      child: Scaffold(
-        backgroundColor: AppColors.bg,
+    final content = Scaffold(
+      backgroundColor: AppColors.bg,
         body: _isLoading
             ? const Center(child: CircularProgressIndicator(color: AppColors.green))
             : SingleChildScrollView(
@@ -826,7 +756,6 @@ class _RefiningFormScreenState extends State<RefiningFormScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
 
-              // Locked banner
               if (_isSubmitted) _LockedBanner(),
 
               MesPageHeader(
@@ -840,7 +769,6 @@ class _RefiningFormScreenState extends State<RefiningFormScreen> {
                 ],
               ),
 
-              // Offline banner
               StreamBuilder<bool>(
                 stream: ConnectivityService().onlineStream,
                 initialData: ConnectivityService().isOnline,
@@ -853,41 +781,26 @@ class _RefiningFormScreenState extends State<RefiningFormScreen> {
               if (_isPreloadingStock)
                 Container(
                   margin: const EdgeInsets.only(bottom: 12),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                   decoration: BoxDecoration(
                     color: const Color(0xFFEFF6FF),
                     borderRadius: BorderRadius.circular(9),
                     border: Border.all(color: const Color(0xFF93C5FD)),
                   ),
-                  child: Row(
-                    children: [
-                      const SizedBox(
-                        width: 14,
-                        height: 14,
+                  child: Row(children: [
+                    const SizedBox(width: 14, height: 14,
                         child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Color(0xFF1D4ED8),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          'Preloading stock for offline use...',
-                          style: GoogleFonts.outfit(
-                            fontSize: 12.5,
-                            color: const Color(0xFF1E3A8A),
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+                            strokeWidth: 2, color: Color(0xFF1D4ED8))),
+                    const SizedBox(width: 8),
+                    Expanded(child: Text('Preloading stock for offline use...',
+                        style: GoogleFonts.outfit(fontSize: 12.5,
+                            color: const Color(0xFF1E3A8A), fontWeight: FontWeight.w600))),
+                  ]),
                 ),
 
               const SizedBox(height: 8),
 
-              // ══ SECTION 1 ════════════════════════════════════════════
+              // ── SECTION 1 ─────────────────────────────────────────
               _SectionCard(
                 icon: Icons.description_outlined,
                 title: 'Refining Log Sheet',
@@ -901,16 +814,13 @@ class _RefiningFormScreenState extends State<RefiningFormScreen> {
                         controller: _potNoCtrl, readOnly: _isSubmitted,
                         prefixIcon: Icons.radio_button_unchecked_outlined),
                     _SearchableDropField(
-                      label: 'Material',
-                      value: _materialId,
-                      items: _materials,
+                      label: 'Material', value: _materialId, items: _materials,
                       enabled: !_isSubmitted,
                       onChanged: (v) => setState(() => _materialId = v),
                     ),
                     GestureDetector(
                       onTap: _isSubmitted ? null : _pickDate,
                       child: AbsorbPointer(
-                          // Always absorb pointers so the text field doesn't consume the tap
                           absorbing: true,
                           child: MesTextField(label: 'Date *',
                               controller: _dateCtrl, readOnly: true,
@@ -936,38 +846,30 @@ class _RefiningFormScreenState extends State<RefiningFormScreen> {
 
               const SizedBox(height: 16),
 
-              // ══ SECTION 2 — Input ════════════════════════════════════
+              // ── SECTION 2 — Input ─────────────────────────────────
               LayoutBuilder(builder: (_, box) {
                 final wide = box.maxWidth > 700;
                 final raw = _InputTable(
-                  title:       'Lead Raw Material',
-                  icon:        Icons.layers_outlined,
-                  rows:        _rawRows,
-                  total:       _rawTotal,
-                  isSubmitted: _isSubmitted,
+                  title: 'Lead Raw Material', icon: Icons.layers_outlined,
+                  rows: _rawRows, total: _rawTotal, isSubmitted: _isSubmitted,
                   onAdd: _isSubmitted ? null : _addRawRow,
                   onRemove: _isSubmitted ? null : _removeRawRow,
                   onQtyTap: _isSubmitted ? null : (i) async {
                     final r = _rawRows[i];
                     await _openSmtModal(materialId: r.materialId,
-                        materialName: r.materialName,
-                        isRaw: true, rowIndex: i);
+                        materialName: r.materialName, isRaw: true, rowIndex: i);
                   },
                   onRecalc: _recalcRawTotal,
                 );
                 final chem = _InputTable(
-                  title:       'Chemicals and Metals',
-                  icon:        Icons.science_outlined,
-                  rows:        _chemRows,
-                  total:       _chemTotal,
-                  isSubmitted: _isSubmitted,
+                  title: 'Chemicals and Metals', icon: Icons.science_outlined,
+                  rows: _chemRows, total: _chemTotal, isSubmitted: _isSubmitted,
                   onAdd: _isSubmitted ? null : _addChemRow,
                   onRemove: _isSubmitted ? null : _removeChemRow,
                   onQtyTap: _isSubmitted ? null : (i) async {
                     final c = _chemRows[i];
                     await _openSmtModal(materialId: c.materialId,
-                        materialName: c.materialName,
-                        isRaw: false, rowIndex: i);
+                        materialName: c.materialName, isRaw: false, rowIndex: i);
                   },
                   onRecalc: _recalcChemTotal,
                 );
@@ -983,53 +885,51 @@ class _RefiningFormScreenState extends State<RefiningFormScreen> {
 
               const SizedBox(height: 16),
 
-              // ══ SECTION 3 — Consumption ══════════════════════════════
+              // ── SECTION 3 — Consumption ───────────────────────────
+              // FIX 4: pass both LTR params that the constructor requires
               _ConsumptionSection(
-                lpgInitCtrl: _lpgInitCtrl, lpgFinalCtrl: _lpgFinalCtrl,
-                lpgConsumed: _lpgConsumed,
-                lpg2InitCtrl: _lpg2InitCtrl, lpg2FinalCtrl: _lpg2FinalCtrl,
-                lpg2Consumed: _lpg2Consumed,
-                elecInitCtrl: _elecInitCtrl, elecFinalCtrl: _elecFinalCtrl,
-                elecConsumed: _elecConsumed,
-                o2Nm3Ctrl: _o2Nm3Ctrl, o2FlowKg: _o2FlowKg,
-                o2TimeCtrl: _o2TimeCtrl, o2Consumption: _o2Consumption,
-                isSubmitted: _isSubmitted,
-                onLpgChanged: (_) { _calcLpg(); },
-                onLpg2Changed: (_) { _calcLpg2(); },
-                onElecChanged: (_) { _calcElec(); },
-                onO2Changed: (_) { _calcO2(); },
+                lpgInitCtrl:  _lpgInitCtrl,
+                lpgFinalCtrl: _lpgFinalCtrl,
+                lpgConsumed:    _lpgConsumed,
+                lpgConsumedLtr: _lpgConsumedLtr,   // ← was missing
+                lpg2InitCtrl:  _lpg2InitCtrl,
+                lpg2FinalCtrl: _lpg2FinalCtrl,
+                lpg2Consumed:    _lpg2Consumed,
+                lpg2ConsumedLtr: _lpg2ConsumedLtr, // ← was missing
+                elecInitCtrl:  _elecInitCtrl,
+                elecFinalCtrl: _elecFinalCtrl,
+                elecConsumed:  _elecConsumed,
+                o2Nm3Ctrl:    _o2Nm3Ctrl,
+                o2FlowKg:     _o2FlowKg,
+                o2TimeCtrl:   _o2TimeCtrl,
+                o2Consumption: _o2Consumption,
+                isSubmitted:  _isSubmitted,
+                onLpgChanged:  (_) => _calcLpg(),
+                onLpg2Changed: (_) => _calcLpg2(),
+                onElecChanged: (_) => _calcElec(),
+                onO2Changed:   (_) => _calcO2(),
               ),
 
               const SizedBox(height: 16),
 
-              // ══ SECTION 4 — Process Details ══════════════════════════
+              // ── SECTION 4 — Process Details ───────────────────────
               _ProcessTable(
-                rows:           _procRows,
-                totalProcMins:  _totalProcMins,
-                isSubmitted:    _isSubmitted,
-                processNames:   _processNames,
+                rows: _procRows, totalProcMins: _totalProcMins,
+                isSubmitted: _isSubmitted, processNames: _processNames,
                 onAdd: _isSubmitted ? null : _addProcRow,
                 onRemove: _isSubmitted ? null : _removeProcRow,
                 onCalcTime: _calcProcTime,
                 onSetNow: _isSubmitted ? null : (i, which) {
-                  final now = TimeOfDay.now();
-
-                  // Convert to 12-hour format
-                  int hour = now.hour;
+                  final now    = TimeOfDay.now();
+                  int hour     = now.hour;
                   final minute = now.minute;
                   final period = hour >= 12 ? 'PM' : 'AM';
-
                   hour = hour % 12;
                   if (hour == 0) hour = 12;
-
-                  final formattedTime = '$hour:${minute.toString().padLeft(2, '0')} $period';
-
+                  final t = '$hour:${minute.toString().padLeft(2, '0')} $period';
                   setState(() {
-                    if (which == 'start') {
-                      _procRows[i].startCtrl.text = formattedTime;
-                    } else {
-                      _procRows[i].endCtrl.text = formattedTime;
-                    }
+                    if (which == 'start') _procRows[i].startCtrl.text = t;
+                    else                  _procRows[i].endCtrl.text   = t;
                     _calcProcTime(i);
                   });
                 },
@@ -1044,29 +944,25 @@ class _RefiningFormScreenState extends State<RefiningFormScreen> {
 
               const SizedBox(height: 16),
 
-              // ══ SECTION 5 — Output ═══════════════════════════════════
+              // ── SECTION 5 — Output ────────────────────────────────
               LayoutBuilder(builder: (_, box) {
                 final wide = box.maxWidth > 700;
                 final fg = _OutputTable(
-                  title: 'Finished Goods',
-                  icon:  Icons.star_outline,
-                  rows:  _fgRows,
-                  total: _fgTotal,
-                  isSubmitted: _isSubmitted,
+                  title: 'Finished Goods', icon: Icons.star_outline,
+                  rows: _fgRows, total: _fgTotal, isSubmitted: _isSubmitted,
                   onAdd: _isSubmitted ? null : _addFGRow,
                   onRemove: _isSubmitted ? null : _removeFGRow,
-                  onQtyTap: _isSubmitted ? null : (i) => _openOutputModal(isFG: true, rowIndex: i),
+                  onQtyTap: _isSubmitted ? null :
+                      (i) => _openOutputModal(isFG: true, rowIndex: i),
                   onRecalc: _recalcFGTotal,
                 );
                 final dross = _OutputTable(
-                  title: 'Drosses',
-                  icon:  Icons.filter_alt_outlined,
-                  rows:  _drossRows,
-                  total: _drossTotal,
-                  isSubmitted: _isSubmitted,
+                  title: 'Drosses', icon: Icons.filter_alt_outlined,
+                  rows: _drossRows, total: _drossTotal, isSubmitted: _isSubmitted,
                   onAdd: _isSubmitted ? null : _addDrossRow,
                   onRemove: _isSubmitted ? null : _removeDrossRow,
-                  onQtyTap: _isSubmitted ? null : (i) => _openOutputModal(isFG: false, rowIndex: i),
+                  onQtyTap: _isSubmitted ? null :
+                      (i) => _openOutputModal(isFG: false, rowIndex: i),
                   onRecalc: _recalcDrossTotal,
                 );
                 if (wide) {
@@ -1081,18 +977,19 @@ class _RefiningFormScreenState extends State<RefiningFormScreen> {
 
               const SizedBox(height: 24),
 
-              // Action buttons
               if (_isSubmitted)
                 const SizedBox.shrink()
               else if (!widget.isCreate)
                 Row(children: [
                   Expanded(child: MesButton(
                     label: 'Save Draft', icon: Icons.save_outlined,
-                    isLoading: _isSaving, onPressed: _isSubmitting ? null : _save,
+                    isLoading: _isSaving,
+                    onPressed: _isSubmitting ? null : _save,
                   )),
                   const SizedBox(width: 12),
                   Expanded(child: _SubmitBtn(
-                    isLoading: _isSubmitting, onPressed: _isSaving ? null : _submit,
+                    isLoading: _isSubmitting,
+                    onPressed: _isSaving ? null : _submit,
                   )),
                 ])
               else
@@ -1101,7 +998,13 @@ class _RefiningFormScreenState extends State<RefiningFormScreen> {
             ],
           ),
         ),
-      ),
+      );
+
+    if (!widget.embedInShell) return content;
+    return AppShell(
+      currentRoute: '/refining',
+      onLogout: widget.onLogout,
+      child: content,
     );
   }
 }
@@ -1118,7 +1021,7 @@ class _RawRow {
   _RawRow({required this.materials, required String materialId,
     required this.smtSelections, required double qty})
       : materialId = materialId,
-        qtyCtrl    = TextEditingController(text: qty > 0 ? qty.toStringAsFixed(3) : '');
+        qtyCtrl = TextEditingController(text: qty > 0 ? qty.toStringAsFixed(3) : '');
 
   String get materialName => materials.firstWhere((m) => m.id == materialId,
       orElse: () => RefiningMaterialOption(id: '', name: '—')).name;
@@ -1135,7 +1038,7 @@ class _ChemRow {
   _ChemRow({required this.materials, required String materialId,
     required this.smtSelections, required double qty})
       : materialId = materialId,
-        qtyCtrl    = TextEditingController(text: qty > 0 ? qty.toStringAsFixed(3) : '');
+        qtyCtrl = TextEditingController(text: qty > 0 ? qty.toStringAsFixed(3) : '');
 
   String get materialName => materials.firstWhere((m) => m.id == materialId,
       orElse: () => RefiningMaterialOption(id: '', name: '—')).name;
@@ -1168,7 +1071,7 @@ class _OutputRow {
     required double totalQty, required List<double> outputBlocks})
       : materialId   = materialId,
         outputBlocks = outputBlocks,
-        qtyCtrl      = TextEditingController(
+        qtyCtrl = TextEditingController(
             text: totalQty > 0 ? totalQty.toStringAsFixed(3) : '');
 
   void dispose() => qtyCtrl.dispose();
@@ -1177,7 +1080,6 @@ class _OutputRow {
 // ─────────────────────────────────────────────
 // Searchable dropdown for header material
 // ─────────────────────────────────────────────
-// Replace the entire _SearchableDropField class with this:
 class _SearchableDropField extends StatelessWidget {
   final String label;
   final String? value;
@@ -1186,33 +1088,27 @@ class _SearchableDropField extends StatelessWidget {
   final ValueChanged<String?> onChanged;
 
   const _SearchableDropField({
-    required this.label,
-    required this.value,
-    required this.items,
-    required this.enabled,
-    required this.onChanged,
+    required this.label, required this.value, required this.items,
+    required this.enabled, required this.onChanged,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label.toUpperCase(), style: AppTextStyles.label()),
-        const SizedBox(height: 5),
-        SearchableDropdown<String>(
-          value: value?.isNotEmpty == true ? value : null,
-          items: items.map((m) => m.id).toList(),
-          displayString: (id) => items.firstWhere(
-                (m) => m.id == id,
-            orElse: () => RefiningMaterialOption(id: '', name: '—'),
-          ).name,
-          hint: 'Select material…',
-          enabled: enabled,
-          onChanged: onChanged,
-        ),
-      ],
-    );
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text(label.toUpperCase(), style: AppTextStyles.label()),
+      const SizedBox(height: 5),
+      SearchableDropdown<String>(
+        value: value?.isNotEmpty == true ? value : null,
+        items: items.map((m) => m.id).toList(),
+        displayString: (id) => items.firstWhere(
+              (m) => m.id == id,
+          orElse: () => RefiningMaterialOption(id: '', name: '—'),
+        ).name,
+        hint: 'Select material…',
+        enabled: enabled,
+        onChanged: onChanged,
+      ),
+    ]);
   }
 }
 
@@ -1222,7 +1118,7 @@ class _SearchableDropField extends StatelessWidget {
 class _InputTable extends StatelessWidget {
   final String title;
   final IconData icon;
-  final List<dynamic> rows; // _RawRow | _ChemRow both have materialId/qtyCtrl
+  final List<dynamic> rows;
   final double total;
   final bool isSubmitted;
   final VoidCallback? onAdd;
@@ -1246,13 +1142,11 @@ class _InputTable extends StatelessWidget {
         Column(children: [
           _tblHeader(['#', 'Material', 'QTY (KG)', ''], [36, 180, 130, 36]),
           ...rows.asMap().entries.map((e) => _InputTblRow(
-            index:       e.key,
-            row:         e.value,
-            isSubmitted: isSubmitted,
-            canDelete:   rows.length > 1 && !isSubmitted,
-            onQtyTap:    onQtyTap == null ? null : () => onQtyTap!(e.key),
-            onRemove:    onRemove == null ? null : () => onRemove!(e.key),
-            onRecalc:    onRecalc,
+            index: e.key, row: e.value, isSubmitted: isSubmitted,
+            canDelete: rows.length > 1 && !isSubmitted,
+            onQtyTap: onQtyTap == null ? null : () => onQtyTap!(e.key),
+            onRemove: onRemove == null ? null : () => onRemove!(e.key),
+            onRecalc: onRecalc,
           )),
           _tblFooter([
             (36 + 180.0, 'TOTAL', true),
@@ -1265,12 +1159,9 @@ class _InputTable extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────
-// Input table row
-// ─────────────────────────────────────────────
 class _InputTblRow extends StatefulWidget {
   final int index;
-  final dynamic row; // _RawRow | _ChemRow
+  final dynamic row;
   final bool isSubmitted, canDelete;
   final VoidCallback? onQtyTap, onRemove;
   final VoidCallback onRecalc;
@@ -1286,10 +1177,12 @@ class _InputTblRow extends StatefulWidget {
 }
 
 class _InputTblRowState extends State<_InputTblRow> {
-  List<RefiningMaterialOption> get _mats => (widget.row as dynamic).materials as List<RefiningMaterialOption>;
+  List<RefiningMaterialOption> get _mats =>
+      (widget.row as dynamic).materials as List<RefiningMaterialOption>;
   String get _matId => (widget.row as dynamic).materialId as String;
   set _matId(String v) => (widget.row as dynamic).materialId = v;
-  TextEditingController get _qtyCtrl => (widget.row as dynamic).qtyCtrl as TextEditingController;
+  TextEditingController get _qtyCtrl =>
+      (widget.row as dynamic).qtyCtrl as TextEditingController;
 
   @override
   Widget build(BuildContext context) {
@@ -1355,31 +1248,48 @@ class _InputTblRowState extends State<_InputTblRow> {
   }
 }
 
-// ─────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
 // Consumption Section
-// Table layout: row labels × 3 column groups (LPG | Electricity | Liquid O2)
-// ─────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
 class _ConsumptionSection extends StatelessWidget {
   final TextEditingController lpgInitCtrl, lpgFinalCtrl;
   final String lpgConsumed;
+  final String lpgConsumedLtr;
+
   final TextEditingController lpg2InitCtrl, lpg2FinalCtrl;
   final String lpg2Consumed;
+  final String lpg2ConsumedLtr;
+
   final TextEditingController elecInitCtrl, elecFinalCtrl;
   final String elecConsumed;
+
   final TextEditingController o2Nm3Ctrl, o2TimeCtrl;
   final double? o2FlowKg, o2Consumption;
+
   final bool isSubmitted;
   final ValueChanged<String> onLpgChanged, onLpg2Changed, onElecChanged, onO2Changed;
 
   const _ConsumptionSection({
-    required this.lpgInitCtrl, required this.lpgFinalCtrl, required this.lpgConsumed,
-    required this.lpg2InitCtrl, required this.lpg2FinalCtrl, required this.lpg2Consumed,
-    required this.elecInitCtrl, required this.elecFinalCtrl, required this.elecConsumed,
-    required this.o2Nm3Ctrl, required this.o2FlowKg,
-    required this.o2TimeCtrl, required this.o2Consumption,
+    required this.lpgInitCtrl,
+    required this.lpgFinalCtrl,
+    required this.lpgConsumed,
+    required this.lpgConsumedLtr,
+    required this.lpg2InitCtrl,
+    required this.lpg2FinalCtrl,
+    required this.lpg2Consumed,
+    required this.lpg2ConsumedLtr,
+    required this.elecInitCtrl,
+    required this.elecFinalCtrl,
+    required this.elecConsumed,
+    required this.o2Nm3Ctrl,
+    required this.o2FlowKg,
+    required this.o2TimeCtrl,
+    required this.o2Consumption,
     required this.isSubmitted,
-    required this.onLpgChanged, required this.onLpg2Changed,
-    required this.onElecChanged, required this.onO2Changed,
+    required this.onLpgChanged,
+    required this.onLpg2Changed,
+    required this.onElecChanged,
+    required this.onO2Changed,
   });
 
   @override
@@ -1389,142 +1299,94 @@ class _ConsumptionSection extends StatelessWidget {
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-          decoration: const BoxDecoration(color: AppColors.greenLight,
-              border: Border(bottom: BorderSide(color: AppColors.border))),
+          decoration: const BoxDecoration(
+            color: AppColors.greenLight,
+            border: Border(bottom: BorderSide(color: AppColors.border)),
+          ),
           child: Row(children: [
             const Icon(Icons.show_chart, size: 15, color: AppColors.green),
             const SizedBox(width: 8),
             Text('CONSUMPTION', style: AppTextStyles.label(color: AppColors.green)),
           ]),
         ),
-        // Column headers
-        Container(
-          decoration: const BoxDecoration(color: AppColors.greenLight,
-              border: Border(bottom: BorderSide(color: AppColors.border, width: 2))),
-          child: Row(children: [
-            _ch('', 130),
 
-            _ch('LPG 1', 160, icon: Icons.local_fire_department_outlined),
-            _ch('LPG 2', 160, icon: Icons.local_fire_department_outlined),
-            _ch('Electricity', 160, icon: Icons.bolt_outlined),
-
-            Expanded(child: _ch('Liquid Oxygen', double.infinity,
-                icon: Icons.water_drop_outlined)),
-          ]),
-        ),
-        // Row: Initial
-
-        _ConsRow(
-          label: 'Initial',
-          lpg:   _numField(lpgInitCtrl, isSubmitted, onChanged: onLpgChanged),
-          lpg2:  _numField(lpg2InitCtrl, isSubmitted, onChanged: onLpg2Changed),
-          elec:  _numField(elecInitCtrl, isSubmitted, onChanged: onElecChanged),
-
-          o2: Row(children: [
-            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              _subLabel('FLOW (NM³)', badge: 'MANUAL', badgeColor: const Color(0xFF0369A1),
-                  badgeBg: const Color(0xFFE0F2FE)),
-              _numField(o2Nm3Ctrl, isSubmitted, onChanged: onO2Changed),
-            ])),
-            const SizedBox(width: 10),
-            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              _subLabel('FLOW (KG)', badge: 'AUTO', badgeColor: const Color(0xFF166534),
-                  badgeBg: const Color(0xFFDCFCE7), note: '= NM³ × 1.429'),
-              _roNumDisplay(o2FlowKg),
-            ])),
-          ]),
-        ),
-        // Row: Final
-
-        _ConsRow(
-          label: 'Final',
-          lpg:   _numField(lpgFinalCtrl, isSubmitted, onChanged: onLpgChanged),
-          lpg2:  _numField(lpg2FinalCtrl, isSubmitted, onChanged: onLpg2Changed),
-          elec:  _numField(elecFinalCtrl, isSubmitted, onChanged: onElecChanged),
-
-          o2: SizedBox(width: 160, child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _subLabel('FLOW TIME (HR)', badge: 'MANUAL', badgeColor: const Color(0xFF0369A1),
-                  badgeBg: const Color(0xFFE0F2FE)),
-              _numField(o2TimeCtrl, isSubmitted, onChanged: onO2Changed),
-            ],
-          )),
-        ),
-        // Row: Consumption totals
-        Container(
-          decoration: const BoxDecoration(color: AppColors.greenLight,
-              border: Border(top: BorderSide(color: AppColors.border, width: 2))),
-          child: Row(children: [
-            SizedBox(width: 130, child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-              child: Text('CONSUMPTION', style: AppTextStyles.label(color: AppColors.green)),
-            )),
-
-            SizedBox(width: 160, child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-              child: _consTotal(lpgConsumed),
-            )),
-            SizedBox(width: 160, child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-              child: _consTotal(lpg2Consumed),
-            )),
-            SizedBox(width: 160, child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-              child: _consTotal(elecConsumed),
-            )),
-
-            Expanded(child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                _subLabel('CONSUMPTION (KG)', badge: 'AUTO', badgeColor: const Color(0xFF166534),
-                    badgeBg: const Color(0xFFDCFCE7), note: '= Time × Flow(KG)'),
-                const SizedBox(height: 6),
-                _roNumDisplay(o2Consumption),
-              ]),
-            )),
-          ]),
+        // Horizontally scrollable table — handles any screen width
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: SizedBox(
+            width: _kTotalW,
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              _ConsHeaderRow(),
+              // Initial row
+              _ConsRow(
+                label: 'Initial',
+                lpgKg:  _numField(lpgInitCtrl,  isSubmitted, onChanged: onLpgChanged),
+                lpgLtr: _ltrDisplay(_kgToLtr(double.tryParse(lpgInitCtrl.text))),
+                lpg2Kg: _numField(lpg2InitCtrl, isSubmitted, onChanged: onLpg2Changed),
+                lpg2Ltr: _ltrDisplay(_kgToLtr(double.tryParse(lpg2InitCtrl.text))),
+                elec: _numField(elecInitCtrl, isSubmitted, onChanged: onElecChanged),
+                o2: _O2InitialCell(
+                    nm3Ctrl: o2Nm3Ctrl, flowKg: o2FlowKg,
+                    isSubmitted: isSubmitted, onChanged: onO2Changed),
+              ),
+              // Final row
+              _ConsRow(
+                label: 'Final',
+                lpgKg:  _numField(lpgFinalCtrl,  isSubmitted, onChanged: onLpgChanged),
+                lpgLtr: _ltrDisplay(_kgToLtr(double.tryParse(lpgFinalCtrl.text))),
+                lpg2Kg: _numField(lpg2FinalCtrl, isSubmitted, onChanged: onLpg2Changed),
+                lpg2Ltr: _ltrDisplay(_kgToLtr(double.tryParse(lpg2FinalCtrl.text))),
+                elec: _numField(elecFinalCtrl, isSubmitted, onChanged: onElecChanged),
+                o2: _O2FinalCell(
+                    timeCtrl: o2TimeCtrl,
+                    isSubmitted: isSubmitted, onChanged: onO2Changed),
+              ),
+              // Consumption totals row
+              _ConsumptionTotalRow(
+                lpgConsumed:     lpgConsumed,
+                lpgConsumedLtr:  lpgConsumedLtr,
+                lpg2Consumed:    lpg2Consumed,
+                lpg2ConsumedLtr: lpg2ConsumedLtr,
+                elecConsumed:    elecConsumed,
+                o2Consumption:   o2Consumption,
+              ),
+            ]),
+          ),
         ),
       ]),
     );
   }
 
-  Widget _ch(String label, double width, {IconData? icon}) {
-    final content = Row(mainAxisSize: MainAxisSize.min, children: [
-      if (icon != null) ...[
-        Icon(icon, size: 13, color: AppColors.green),
-        const SizedBox(width: 5),
-      ],
-      Text(label.toUpperCase(), style: AppTextStyles.label(color: AppColors.green)),
-    ]);
-    if (width == double.infinity) {
-      return Padding(padding: const EdgeInsets.all(12), child: content);
-    }
-    return SizedBox(width: width, child: Padding(padding: const EdgeInsets.all(12), child: content));
-  }
+  static double? _kgToLtr(double? kg) => kg != null && kg >= 0 ? kg * 1.98 : null;
 
-  static Widget _subLabel(String label, {required String badge,
-    required Color badgeColor, required Color badgeBg, String? note}) =>
-      Wrap(spacing: 5, crossAxisAlignment: WrapCrossAlignment.center, children: [
-        Text(label.toUpperCase(),
-            style: const TextStyle(fontSize: 9.5, fontWeight: FontWeight.w700,
-                color: AppColors.textMuted, letterSpacing: 0.5)),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-          decoration: BoxDecoration(color: badgeBg, borderRadius: BorderRadius.circular(3)),
-          child: Text(badge, style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700,
-              color: badgeColor)),
-        ),
-        if (note != null)
-          Text(note, style: const TextStyle(fontSize: 9, color: AppColors.textMuted)),
-      ]);
+  static Widget _ltrDisplay(double? ltr) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+    decoration: BoxDecoration(
+      color: const Color(0xFFF0FDF4),
+      border: Border.all(color: const Color(0xFFBBF7D0), width: 1.5),
+      borderRadius: BorderRadius.circular(8),
+    ),
+    child: Row(children: [
+      const Icon(Icons.check, size: 11, color: Color(0xFF16A34A)),
+      const SizedBox(width: 5),
+      Expanded(child: Text(
+        ltr != null ? ltr.toStringAsFixed(3) : '—',
+        style: GoogleFonts.outfit(fontSize: 13, fontWeight: FontWeight.w600,
+            color: const Color(0xFF15803D)),
+        overflow: TextOverflow.ellipsis,
+      )),
+      Text(' LTR', style: GoogleFonts.outfit(
+          fontSize: 9, color: const Color(0xFF16A34A), fontWeight: FontWeight.w600)),
+    ]),
+  );
 
   static Widget _numField(TextEditingController ctrl, bool ro,
       {ValueChanged<String>? onChanged}) =>
       TextField(
         controller: ctrl, readOnly: ro, onChanged: onChanged,
         keyboardType: const TextInputType.numberWithOptions(decimal: true),
-        inputFormatters: ro ? null : [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))],
+        inputFormatters:
+        ro ? null : [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))],
         style: GoogleFonts.outfit(fontSize: 13, color: AppColors.textDark),
         decoration: InputDecoration(
           isDense: true, filled: true, fillColor: AppColors.greenXLight,
@@ -1539,66 +1401,288 @@ class _ConsumptionSection extends StatelessWidget {
               borderSide: const BorderSide(color: AppColors.green, width: 1.5)),
         ),
       );
+}
 
-  static Widget _roNumDisplay(double? value) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
-    decoration: BoxDecoration(color: const Color(0xFFEEF6F1),
-        border: Border.all(color: const Color(0xFFC8DFD1), width: 1.5),
-        borderRadius: BorderRadius.circular(8)),
-    child: Text(
-      value != null ? value.toStringAsFixed(3) : 'Auto',
-      style: GoogleFonts.outfit(fontSize: 13, color: AppColors.green,
-          fontWeight: FontWeight.w600),
-    ),
+// ─────────────────────────────────────────────────────────────────────────────
+// Column header row
+// ─────────────────────────────────────────────────────────────────────────────
+class _ConsHeaderRow extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: AppColors.greenLight,
+        border: Border(bottom: BorderSide(color: AppColors.border, width: 2)),
+      ),
+      child: Row(children: [
+        _hCell('', _kLabelW),
+        _hCell('LPG',   _kLpgKgW,  icon: Icons.local_fire_department_outlined,
+            badge: 'KG', badgeBg: const Color(0xFFFEF9C3), badgeColor: const Color(0xFF854D0E)),
+        _hCell('LPG',   _kLpgLtrW, icon: Icons.local_fire_department_outlined,
+            badge: 'LTR', badgeBg: const Color(0xFFDCFCE7), badgeColor: const Color(0xFF166534),
+            note: '×1.98', isAutoCol: true),
+        _hCell('LPG 2', _kLpg2KgW, icon: Icons.local_fire_department_outlined,
+            badge: 'KG', badgeBg: const Color(0xFFFEF9C3), badgeColor: const Color(0xFF854D0E)),
+        _hCell('LPG 2', _kLpg2LtrW, icon: Icons.local_fire_department_outlined,
+            badge: 'LTR', badgeBg: const Color(0xFFDCFCE7), badgeColor: const Color(0xFF166534),
+            note: '×1.98', isAutoCol: true),
+        _hCell('Electricity', _kElecW, icon: Icons.bolt_outlined),
+        SizedBox(width: _kO2W, child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(children: [
+            const Icon(Icons.water_drop_outlined, size: 13, color: AppColors.green),
+            const SizedBox(width: 5),
+            Text('LIQUID OXYGEN', style: AppTextStyles.label(color: AppColors.green)),
+          ]),
+        )),
+      ]),
+    );
+  }
+
+  Widget _hCell(String label, double width, {
+    IconData? icon, String? badge, Color? badgeBg, Color? badgeColor,
+    String? note, bool isAutoCol = false,
+  }) {
+    return SizedBox(
+      width: width,
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        color: isAutoCol ? const Color(0xFFF0FDF4) : AppColors.greenLight,
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+          Row(children: [
+            if (icon != null) ...[
+              Icon(icon, size: 13,
+                  color: isAutoCol ? const Color(0xFF16A34A) : AppColors.green),
+              const SizedBox(width: 5),
+            ],
+            Text(label.toUpperCase(), style: AppTextStyles.label(
+                color: isAutoCol ? const Color(0xFF16A34A) : AppColors.green)),
+            if (badge != null) ...[
+              const SizedBox(width: 5),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                decoration: BoxDecoration(color: badgeBg, borderRadius: BorderRadius.circular(3)),
+                child: Text(badge, style: TextStyle(
+                    fontSize: 9, fontWeight: FontWeight.w700, color: badgeColor)),
+              ),
+            ],
+          ]),
+          if (note != null) ...[
+            const SizedBox(height: 2),
+            Text(note, style: const TextStyle(fontSize: 9, color: AppColors.textMuted)),
+          ],
+        ]),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Generic data row (Initial / Final)
+// ─────────────────────────────────────────────────────────────────────────────
+class _ConsRow extends StatelessWidget {
+  final String label;
+  final Widget lpgKg, lpgLtr, lpg2Kg, lpg2Ltr, elec, o2;
+
+  const _ConsRow({
+    required this.label, required this.lpgKg, required this.lpgLtr,
+    required this.lpg2Kg, required this.lpg2Ltr, required this.elec, required this.o2,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+          border: Border(bottom: BorderSide(color: AppColors.borderLight))),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Container(width: _kLabelW, color: AppColors.greenXLight,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            child: Text(label.toUpperCase(), style: AppTextStyles.label())),
+        SizedBox(width: _kLpgKgW, child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8), child: lpgKg)),
+        Container(width: _kLpgLtrW, color: const Color(0xFFF0FDF4),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8), child: lpgLtr),
+        SizedBox(width: _kLpg2KgW, child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8), child: lpg2Kg)),
+        Container(width: _kLpg2LtrW, color: const Color(0xFFF0FDF4),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8), child: lpg2Ltr),
+        SizedBox(width: _kElecW, child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8), child: elec)),
+        SizedBox(width: _kO2W, child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8), child: o2)),
+      ]),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Consumption totals row
+// ─────────────────────────────────────────────────────────────────────────────
+class _ConsumptionTotalRow extends StatelessWidget {
+  final String lpgConsumed, lpgConsumedLtr;
+  final String lpg2Consumed, lpg2ConsumedLtr;
+  final String elecConsumed;
+  final double? o2Consumption;
+
+  const _ConsumptionTotalRow({
+    required this.lpgConsumed, required this.lpgConsumedLtr,
+    required this.lpg2Consumed, required this.lpg2ConsumedLtr,
+    required this.elecConsumed, required this.o2Consumption,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: AppColors.greenLight,
+        border: Border(top: BorderSide(color: AppColors.border, width: 2)),
+      ),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Container(width: _kLabelW,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            child: Text('CONSUMPTION', style: AppTextStyles.label(color: AppColors.green))),
+        _totalCell(_kLpgKgW,  'TOTAL (KG)',  lpgConsumed),
+        _ltrTotalCell(_kLpgLtrW,  lpgConsumedLtr),
+        _totalCell(_kLpg2KgW, 'TOTAL (KG)',  lpg2Consumed),
+        _ltrTotalCell(_kLpg2LtrW, lpg2ConsumedLtr),
+        _totalCell(_kElecW,   'TOTAL',        elecConsumed),
+        SizedBox(width: _kO2W, child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Wrap(spacing: 5, crossAxisAlignment: WrapCrossAlignment.center, children: [
+              const Text('CONSUMPTION (KG)', style: TextStyle(fontSize: 9.5,
+                  fontWeight: FontWeight.w700, color: AppColors.textMuted, letterSpacing: 0.5)),
+              _autoBadge(),
+              const Text('= Time × Flow(KG)',
+                  style: TextStyle(fontSize: 9, color: AppColors.textMuted)),
+            ]),
+            const SizedBox(height: 6),
+            _roNumDisplayStatic(o2Consumption),  // FIX 5: use static helper
+          ]),
+        )),
+      ]),
+    );
+  }
+
+  Widget _totalCell(double width, String sublabel, String value) {
+    final isDash = value == '—';
+    return SizedBox(width: width, child: Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min, children: [
+            Text(sublabel, style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w700,
+                color: AppColors.textMuted, letterSpacing: 0.5)),
+            const SizedBox(height: 4),
+            Text(value, style: GoogleFonts.outfit(
+                fontSize: isDash ? 14 : 15, fontWeight: FontWeight.w700,
+                color: isDash ? AppColors.textMuted : AppColors.green)),
+          ]),
+    ));
+  }
+
+  Widget _ltrTotalCell(double width, String ltrValue) {
+    final isDash = ltrValue == '—';
+    return Container(width: width, color: const Color(0xFFF0FDF4),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min, children: [
+            Row(children: [
+              const Text('TOTAL (LTR)', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700,
+                  color: Color(0xFF16A34A), letterSpacing: 0.5)),
+              const SizedBox(width: 5),
+              _autoBadge(),
+            ]),
+            const SizedBox(height: 4),
+            Text(ltrValue, style: GoogleFonts.outfit(
+                fontSize: isDash ? 14 : 15, fontWeight: FontWeight.w700,
+                color: isDash ? AppColors.textMuted : const Color(0xFF15803D))),
+          ]),
+    );
+  }
+
+  // FIX 5: static so it doesn't shadow the file-level _roNumDisplayStatic
+  static Widget _autoBadge() => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+    decoration: BoxDecoration(color: const Color(0xFFDCFCE7),
+        borderRadius: BorderRadius.circular(3)),
+    child: const Text('AUTO', style: TextStyle(
+        fontSize: 9, fontWeight: FontWeight.w700, color: Color(0xFF166534))),
   );
 
-  static Widget _consTotal(String text) {
-    final isDash = text == '—';
-    return Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-      Text('TOTAL', style: AppTextStyles.label(color: AppColors.green)),
-      Text(text, style: GoogleFonts.outfit(
-        fontSize: isDash ? 14 : 15,
-        fontWeight: FontWeight.w700,
-        color: isDash ? AppColors.textMuted : AppColors.green,
-      )),
+  // Named distinctly to avoid conflict with the file-level helper
+  static Widget _roNumDisplayStatic(double? value) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+    decoration: BoxDecoration(
+      color: const Color(0xFFEEF6F1),
+      border: Border.all(color: const Color(0xFFC8DFD1), width: 1.5),
+      borderRadius: BorderRadius.circular(8),
+    ),
+    child: Text(value != null ? value.toStringAsFixed(3) : 'Auto',
+        style: GoogleFonts.outfit(
+            fontSize: 13, color: AppColors.green, fontWeight: FontWeight.w600)),
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Liquid Oxygen cells
+// ─────────────────────────────────────────────────────────────────────────────
+class _O2InitialCell extends StatelessWidget {
+  final TextEditingController nm3Ctrl;
+  final double? flowKg;
+  final bool isSubmitted;
+  final ValueChanged<String> onChanged;
+
+  const _O2InitialCell({
+    required this.nm3Ctrl, required this.flowKg,
+    required this.isSubmitted, required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        _subLabel('FLOW (NM³)', badge: 'MANUAL',
+            badgeBg: const Color(0xFFE0F2FE), badgeColor: const Color(0xFF0369A1)),
+        const SizedBox(height: 4),
+        _numFieldO2(nm3Ctrl, isSubmitted, onChanged: onChanged),
+      ])),
+      const SizedBox(width: 10),
+      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        _subLabel('FLOW (KG)', badge: 'AUTO',
+            badgeBg: const Color(0xFFDCFCE7), badgeColor: const Color(0xFF166534),
+            note: '= NM³ × 1.429'),
+        const SizedBox(height: 4),
+        _roNumDisplay(flowKg),
+      ])),
     ]);
   }
 }
 
-class _ConsRow extends StatelessWidget {
-  final String label;
-  final Widget lpg, lpg2, elec, o2;
-  const _ConsRow({required this.label, required this.lpg, required this.lpg2,
-    required this.elec, required this.o2});
+class _O2FinalCell extends StatelessWidget {
+  final TextEditingController timeCtrl;
+  final bool isSubmitted;
+  final ValueChanged<String> onChanged;
+
+  const _O2FinalCell({
+    required this.timeCtrl, required this.isSubmitted, required this.onChanged,
+  });
 
   @override
-  Widget build(BuildContext context) => Container(
-    decoration: const BoxDecoration(
-        border: Border(bottom: BorderSide(color: AppColors.borderLight))),
-    child: Row(children: [
-      Container(width: 130, color: AppColors.greenXLight, padding:
-      const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        child: Text(label.toUpperCase(),
-            style: AppTextStyles.label()),
-      ),
-      SizedBox(width: 160, child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          child: lpg)),
-      SizedBox(width: 160, child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          child: lpg2)),
-      SizedBox(width: 160, child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          child: elec)),
-      Expanded(child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          child: o2)),
-    ]),
-  );
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: _kO2W / 2,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        _subLabel('FLOW TIME (HR)', badge: 'MANUAL',
+            badgeBg: const Color(0xFFE0F2FE), badgeColor: const Color(0xFF0369A1)),
+        const SizedBox(height: 4),
+        _numFieldO2(timeCtrl, isSubmitted, onChanged: onChanged),
+      ]),
+    );
+  }
 }
 
 // ─────────────────────────────────────────────
-// Process Table (dynamic rows, process names from API)
+// Process Table
 // ─────────────────────────────────────────────
 class _ProcessTable extends StatelessWidget {
   final List<_ProcRow> rows;
@@ -1617,28 +1701,17 @@ class _ProcessTable extends StatelessWidget {
     required this.onCalcTime, required this.onSetNow, required this.onPickTime,
   });
 
+  String _fmtTime(int totalMinutes) {
+    if (totalMinutes <= 0) return '';
+    final h = totalMinutes ~/ 60;
+    final m = totalMinutes % 60;
+    if (h > 0 && m > 0) return '$h hr $m min';
+    if (h > 0)           return '$h hr';
+    return '$m min';
+  }
+
   @override
   Widget build(BuildContext context) {
-    // final h = totalProcMins ~/ 60;
-    // final m = totalProcMins % 60;
-    // final totalStr = totalProcMins > 0
-    //     ? (h > 0 ? '${h}h ${m}min' : '${m} min') : '';
-
-    String getFormattedTime(int totalMinutes) {
-      if (totalMinutes <= 0) return '';
-      final hours = totalMinutes ~/ 60;
-      final minutes = totalMinutes % 60;
-
-      if (hours > 0 && minutes > 0) {
-        return '$hours hr $minutes min';
-      } else if (hours > 0) {
-        return '$hours hr';
-      } else {
-        return '$minutes min';
-      }
-    }
-    final totalStr = getFormattedTime(totalProcMins);
-
     return MesCard(
       padding: EdgeInsets.zero,
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -1648,35 +1721,31 @@ class _ProcessTable extends StatelessWidget {
             decoration: const BoxDecoration(color: AppColors.greenLight,
                 border: Border(bottom: BorderSide(color: AppColors.border, width: 2))),
             child: Row(children: [
-              _ph('Process',     180),
-              _ph('Start',       110, center: true),
-              _ph('',             44),
-              _ph('End',         110, center: true),
-              _ph('',             44),
-              _ph('Total Time',   90),
-              _ph('',             36),
+              _ph('Process', 180), _ph('Start', 110, center: true),
+              _ph('', 44),        _ph('End',   110, center: true),
+              _ph('', 44),        _ph('Total Time', 90),
+              _ph('', 36),
             ]),
           ),
           ...rows.asMap().entries.map((e) => _ProcTblRow(
             index: e.key, row: e.value, isSubmitted: isSubmitted,
-            processNames: processNames,
-            onSetNow: onSetNow, onPickTime: onPickTime,
-            onCalcTime: onCalcTime, onRemove: onRemove,
+            processNames: processNames, onSetNow: onSetNow,
+            onPickTime: onPickTime, onCalcTime: onCalcTime, onRemove: onRemove,
           )),
           Container(
             decoration: const BoxDecoration(color: AppColors.greenLight,
                 border: Border(top: BorderSide(color: AppColors.border, width: 2))),
             child: Row(children: [
-              SizedBox(width: 180 + 110 + 44 + 110 + 44, child: Padding(
+              SizedBox(width: 180 + 110 + 44 + 110 + 44.0, child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                 child: Align(alignment: Alignment.centerRight,
                     child: Text('TOTAL PROCESS TIME',
                         style: AppTextStyles.label(color: AppColors.green))),
               )),
-              SizedBox(width: 90 + 36, child: Padding(
+              SizedBox(width: 90 + 36.0, child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-                child: Text(totalStr, style: GoogleFonts.outfit(fontSize: 12.5,
-                    fontWeight: FontWeight.w700, color: AppColors.green)),
+                child: Text(_fmtTime(totalProcMins), style: GoogleFonts.outfit(
+                    fontSize: 12.5, fontWeight: FontWeight.w700, color: AppColors.green)),
               )),
             ]),
           ),
@@ -1687,12 +1756,10 @@ class _ProcessTable extends StatelessWidget {
 
   Widget _ph(String label, double w, {bool center = false}) => SizedBox(
     width: w,
-    child: Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-      child: Align(alignment: center ? Alignment.center : Alignment.centerLeft,
-          child: Text(label.toUpperCase(),
-              style: AppTextStyles.label(color: AppColors.green))),
-    ),
+    child: Padding(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+        child: Align(alignment: center ? Alignment.center : Alignment.centerLeft,
+            child: Text(label.toUpperCase(),
+                style: AppTextStyles.label(color: AppColors.green)))),
   );
 }
 
@@ -1709,7 +1776,7 @@ class _ProcTblRow extends StatefulWidget {
   const _ProcTblRow({
     required this.index, required this.row, required this.isSubmitted,
     required this.processNames, required this.onSetNow, required this.onPickTime,
-    required this.onCalcTime,required this.onRemove,
+    required this.onCalcTime, required this.onRemove,
   });
 
   @override
@@ -1720,127 +1787,67 @@ class _ProcTblRowState extends State<_ProcTblRow> {
   @override
   Widget build(BuildContext context) {
     final row = widget.row;
-    final ro = widget.isSubmitted;
-
+    final ro  = widget.isSubmitted;
     return Container(
       decoration: const BoxDecoration(
-        border: Border(bottom: BorderSide(color: AppColors.borderLight)),
-      ),
+          border: Border(bottom: BorderSide(color: AppColors.borderLight))),
       child: Row(children: [
-        // Process name column
-        SizedBox(
-          width: 180,
-          child: Padding(
-            padding: const EdgeInsets.all(5),
-            child: ro
-                ? _roCell(row.processName, 170)
-                : SearchableDropdown<String>(
-              value: row.processName.isNotEmpty ? row.processName : null,
-              items: widget.processNames,
-              displayString: (item) => item,
-              hint: 'Select process…',
-              onChanged: (v) => setState(() => row.processName = v ?? ''),
+        SizedBox(width: 180, child: Padding(padding: const EdgeInsets.all(5),
+          child: ro
+              ? _roCell(row.processName, 170)
+              : SearchableDropdown<String>(
+            value: row.processName.isNotEmpty ? row.processName : null,
+            items: widget.processNames,
+            displayString: (item) => item,
+            hint: 'Select process…',
+            onChanged: (v) => setState(() => row.processName = v ?? ''),
+          ),
+        )),
+        SizedBox(width: 110, child: Padding(padding: const EdgeInsets.all(5),
+          child: CompactTimePickerField(
+            controller: row.startCtrl, readOnly: ro,
+            onTimeSelected: () => widget.onCalcTime(widget.index),
+          ),
+        )),
+        ro ? const SizedBox(width: 44) : SizedBox(width: 44, child: Center(
+          child: GestureDetector(
+            onTap: () => widget.onSetNow?.call(widget.index, 'start'),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+              decoration: BoxDecoration(color: const Color(0xFF16A34A),
+                  borderRadius: BorderRadius.circular(5)),
+              child: const Text('START', style: TextStyle(fontSize: 9,
+                  fontWeight: FontWeight.w700, color: Colors.white)),
             ),
           ),
-        ),
-        // Start time - using CompactTimePickerField
-        SizedBox(
-          width: 110,
-          child: Padding(
-            padding: const EdgeInsets.all(5),
-            child: CompactTimePickerField(
-              controller: row.startCtrl,
-              readOnly: ro,
-              onTimeSelected: () => widget.onCalcTime(widget.index),
+        )),
+        SizedBox(width: 110, child: Padding(padding: const EdgeInsets.all(5),
+          child: CompactTimePickerField(
+            controller: row.endCtrl, readOnly: ro,
+            onTimeSelected: () => widget.onCalcTime(widget.index),
+          ),
+        )),
+        ro ? const SizedBox(width: 44) : SizedBox(width: 44, child: Center(
+          child: GestureDetector(
+            onTap: () => widget.onSetNow?.call(widget.index, 'end'),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+              decoration: BoxDecoration(color: const Color(0xFFDC2626),
+                  borderRadius: BorderRadius.circular(5)),
+              child: const Text('END', style: TextStyle(fontSize: 9,
+                  fontWeight: FontWeight.w700, color: Colors.white)),
             ),
           ),
-        ),
-        // Start now button
-        ro
-            ? const SizedBox(width: 44)
-            : SizedBox(
-          width: 44,
-          child: Center(
-            child: GestureDetector(
-              onTap: () => widget.onSetNow?.call(widget.index, 'start'),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF16A34A),
-                  borderRadius: BorderRadius.circular(5),
-                ),
-                child: const Text(
-                  'START',
-                  style: TextStyle(
-                    fontSize: 9,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-        // End time - using CompactTimePickerField
-        SizedBox(
-          width: 110,
-          child: Padding(
-            padding: const EdgeInsets.all(5),
-            child: CompactTimePickerField(
-              controller: row.endCtrl,
-              readOnly: ro,
-              onTimeSelected: () => widget.onCalcTime(widget.index),
-            ),
-          ),
-        ),
-        // End now button
-        ro
-            ? const SizedBox(width: 44)
-            : SizedBox(
-          width: 44,
-          child: Center(
-            child: GestureDetector(
-              onTap: () => widget.onSetNow?.call(widget.index, 'end'),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFDC2626),
-                  borderRadius: BorderRadius.circular(5),
-                ),
-                child: const Text(
-                  'END',
-                  style: TextStyle(
-                    fontSize: 9,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-        // Total time
-        SizedBox(
-          width: 90,
-          child: Padding(
-            padding: const EdgeInsets.all(5),
-            child: _tblInput(
-              controller: row.totalCtrl,
-              readOnly: true,
-              calcStyle: true,
-              hint: '0 min',
-            ),
-          ),
-        ),
-        // Delete button
-        SizedBox(
-          width: 36,
-          child: Center(
-            child: (row.processName.isNotEmpty || !ro)
-                ? _delBtn(() => widget.onRemove?.call(widget.index))
-                : const SizedBox.shrink(),
-          ),
-        ),
+        )),
+        SizedBox(width: 90, child: Padding(padding: const EdgeInsets.all(5),
+          child: _tblInput(controller: row.totalCtrl, readOnly: true,
+              calcStyle: true, hint: '0 min'),
+        )),
+        SizedBox(width: 36, child: Center(
+          child: (row.processName.isNotEmpty || !ro)
+              ? _delBtn(() => widget.onRemove?.call(widget.index))
+              : const SizedBox.shrink(),
+        )),
       ]),
     );
   }
@@ -1935,7 +1942,7 @@ class _OutputTblRowState extends State<_OutputTblRow> {
             hint: 'Select…',
             onChanged: (v) {
               setState(() {
-                row.materialId = v ?? '';
+                row.materialId   = v ?? '';
                 row.outputBlocks = [];
                 row.qtyCtrl.text = '';
               });
@@ -2027,10 +2034,8 @@ class _SmeltingLotModalState extends State<_SmeltingLotModal> {
     final sels = <SmeltingSelection>[];
     for (final lot in widget.lots) {
       final qty = double.tryParse(_ctrl[lot.smeltingBatchId]?.text ?? '') ?? 0;
-      if (qty > 0) {
-        sels.add(SmeltingSelection(
-            smtId: lot.smeltingBatchId, smtNo: lot.batchNo, qty: qty));
-      }
+      if (qty > 0) sels.add(SmeltingSelection(
+          smtId: lot.smeltingBatchId, smtNo: lot.batchNo, qty: qty));
     }
     widget.onConfirm(sels);
     Navigator.of(context).pop();
@@ -2045,7 +2050,8 @@ class _SmeltingLotModalState extends State<_SmeltingLotModal> {
             borderRadius: BorderRadius.vertical(top: Radius.circular(18))),
         child: Column(children: [
           Center(child: Container(margin: const EdgeInsets.only(top: 10),
-              width: 36, height: 4, decoration: BoxDecoration(color: AppColors.border,
+              width: 36, height: 4,
+              decoration: BoxDecoration(color: AppColors.border,
                   borderRadius: BorderRadius.circular(2)))),
           Container(
             padding: const EdgeInsets.fromLTRB(20, 14, 20, 14),
@@ -2057,14 +2063,12 @@ class _SmeltingLotModalState extends State<_SmeltingLotModal> {
               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text('Select Smelting Batch',
                     style: AppTextStyles.subheading(color: AppColors.green)),
-                Text('Material: ${widget.materialName}',
-                    style: AppTextStyles.caption()),
+                Text('Material: ${widget.materialName}', style: AppTextStyles.caption()),
               ])),
               GestureDetector(onTap: () => Navigator.of(context).pop(),
                   child: const Icon(Icons.close, size: 18, color: AppColors.textMuted)),
             ]),
           ),
-
           if (widget.isOffline)
             Container(
               margin: const EdgeInsets.fromLTRB(16, 10, 16, 0),
@@ -2080,7 +2084,6 @@ class _SmeltingLotModalState extends State<_SmeltingLotModal> {
                         color: const Color(0xFF92400E)))),
               ]),
             ),
-
           if (widget.lots.isEmpty)
             Expanded(child: Center(child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -2104,7 +2107,8 @@ class _SmeltingLotModalState extends State<_SmeltingLotModal> {
                       border: Border(bottom: BorderSide(color: AppColors.border, width: 2))),
                   child: Row(children: [
                     _mth('Batch No', 130), _mth('Material', 160),
-                    _mth('Unit', 60), _mth('Available', 120), _mth('Assign Qty', 120),
+                    _mth('Unit', 60),      _mth('Available', 120),
+                    _mth('Assign Qty', 120),
                   ]),
                 ),
                 ...widget.lots.map((lot) {
@@ -2144,9 +2148,8 @@ class _SmeltingLotModalState extends State<_SmeltingLotModal> {
                                 : const Color(0xFFD1FAE5),
                             borderRadius: BorderRadius.circular(20),
                           ),
-                          child: Text('${lot.availableQty.toStringAsFixed(3)}',
-                              style: GoogleFonts.outfit(fontSize: 11,
-                                  fontWeight: FontWeight.w600,
+                          child: Text(lot.availableQty.toStringAsFixed(3),
+                              style: GoogleFonts.outfit(fontSize: 11, fontWeight: FontWeight.w600,
                                   color: isZero ? const Color(0xFF991B1B)
                                       : lot.availableQty < 50 ? const Color(0xFF854D0E)
                                       : const Color(0xFF065F46))),
@@ -2172,25 +2175,30 @@ class _SmeltingLotModalState extends State<_SmeltingLotModal> {
                             hintStyle: GoogleFonts.outfit(fontSize: 12, color: AppColors.textMuted),
                             isDense: true, filled: true,
                             fillColor: isZero ? const Color(0xFFF3F4F6) : AppColors.greenXLight,
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                            contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 10, vertical: 8),
                             border: OutlineInputBorder(borderRadius: BorderRadius.circular(6),
-                                borderSide: const BorderSide(color: AppColors.border, width: 1.5)),
-                            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(6),
-                                borderSide: const BorderSide(color: AppColors.border, width: 1.5)),
-                            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(6),
-                                borderSide: const BorderSide(color: AppColors.green, width: 1.5)),
+                                borderSide: const BorderSide(
+                                    color: AppColors.border, width: 1.5)),
+                            enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(6),
+                                borderSide: const BorderSide(
+                                    color: AppColors.border, width: 1.5)),
+                            focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(6),
+                                borderSide: const BorderSide(
+                                    color: AppColors.green, width: 1.5)),
                           ),
                         ),
                       )),
                     ]),
                   ));
                 }),
-                // Total row
                 Container(
                   decoration: const BoxDecoration(color: AppColors.greenLight,
                       border: Border(top: BorderSide(color: AppColors.border, width: 2))),
                   child: Row(children: [
-                    SizedBox(width: 130 + 160 + 60 + 120, child: Padding(
+                    SizedBox(width: 130 + 160 + 60 + 120.0, child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                       child: Align(alignment: Alignment.centerRight,
                           child: Text('TOTAL ASSIGN QTY',
@@ -2210,7 +2218,6 @@ class _SmeltingLotModalState extends State<_SmeltingLotModal> {
               ]),
             )),
           ],
-
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
             decoration: const BoxDecoration(
@@ -2230,13 +2237,13 @@ class _SmeltingLotModalState extends State<_SmeltingLotModal> {
 
   Widget _mth(String label, double w) => SizedBox(width: w, child: Padding(
     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-    child: Text(label.toUpperCase(), style: AppTextStyles.label(color: AppColors.green)),
+    child: Text(label.toUpperCase(),
+        style: AppTextStyles.label(color: AppColors.green)),
   ));
 }
 
 // ─────────────────────────────────────────────
-// Output Block Modal (shared for FG + Dross)
-// Up to 11 rows by default, expandable with ADD button
+// Output Block Modal
 // ─────────────────────────────────────────────
 class _OutputBlockModal extends StatefulWidget {
   final String title, materialName;
@@ -2276,9 +2283,7 @@ class _OutputBlockModalState extends State<_OutputBlockModal> {
   double get _total =>
       _ctrls.fold(0, (s, c) => s + (double.tryParse(c.text) ?? 0));
 
-  void _addRow() {
-    setState(() => _ctrls.add(TextEditingController()));
-  }
+  void _addRow() => setState(() => _ctrls.add(TextEditingController()));
 
   void _confirm() {
     final blocks = _ctrls.map((c) => double.tryParse(c.text) ?? 0).toList();
@@ -2295,7 +2300,8 @@ class _OutputBlockModalState extends State<_OutputBlockModal> {
             borderRadius: BorderRadius.vertical(top: Radius.circular(18))),
         child: Column(children: [
           Center(child: Container(margin: const EdgeInsets.only(top: 10),
-              width: 36, height: 4, decoration: BoxDecoration(color: AppColors.border,
+              width: 36, height: 4,
+              decoration: BoxDecoration(color: AppColors.border,
                   borderRadius: BorderRadius.circular(2)))),
           Container(
             padding: const EdgeInsets.fromLTRB(20, 14, 20, 14),
@@ -2305,10 +2311,10 @@ class _OutputBlockModalState extends State<_OutputBlockModal> {
               const Icon(Icons.view_list_outlined, size: 16, color: AppColors.green),
               const SizedBox(width: 8),
               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(widget.title, style: AppTextStyles.subheading(color: AppColors.green)),
+                Text(widget.title,
+                    style: AppTextStyles.subheading(color: AppColors.green)),
                 if (widget.materialName.isNotEmpty)
-                  Text('Material: ${widget.materialName}',
-                      style: AppTextStyles.caption()),
+                  Text('Material: ${widget.materialName}', style: AppTextStyles.caption()),
               ])),
               GestureDetector(onTap: () => Navigator.of(context).pop(),
                   child: const Icon(Icons.close, size: 18, color: AppColors.textMuted)),
@@ -2323,15 +2329,14 @@ class _OutputBlockModalState extends State<_OutputBlockModal> {
                 border: const Border(bottom: BorderSide(color: AppColors.borderLight)),
               ),
               child: Row(children: [
-                Container(
-                  width: 80, padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                  decoration: const BoxDecoration(
-                    color: AppColors.greenXLight,
-                    border: Border(right: BorderSide(color: AppColors.borderLight)),
-                  ),
+                Container(width: 80,
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  decoration: const BoxDecoration(color: AppColors.greenXLight,
+                      border: Border(right: BorderSide(color: AppColors.borderLight))),
                   child: Align(alignment: Alignment.centerRight,
-                      child: Text('${i + 1}', style: GoogleFonts.outfit(fontSize: 12.5,
-                          fontWeight: FontWeight.w700, color: AppColors.green))),
+                      child: Text('${i + 1}', style: GoogleFonts.outfit(
+                          fontSize: 12.5, fontWeight: FontWeight.w700,
+                          color: AppColors.green))),
                 ),
                 Expanded(child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
@@ -2359,11 +2364,11 @@ class _OutputBlockModalState extends State<_OutputBlockModal> {
               ]),
             ),
           )),
-          // Total
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
             decoration: const BoxDecoration(color: AppColors.greenLight,
-                border: Border(top: BorderSide(color: AppColors.border, width: 2),
+                border: Border(
+                    top: BorderSide(color: AppColors.border, width: 2),
                     bottom: BorderSide(color: AppColors.border))),
             child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
               Text('TOTAL', style: AppTextStyles.label(color: AppColors.green)),
@@ -2375,7 +2380,6 @@ class _OutputBlockModalState extends State<_OutputBlockModal> {
               ]),
             ]),
           ),
-          // Footer
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
             child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
@@ -2433,7 +2437,8 @@ class _LockedBanner extends StatelessWidget {
     child: Row(children: [
       const Icon(Icons.lock_outline, size: 18, color: Color(0xFF92400E)),
       const SizedBox(width: 10),
-      Expanded(child: Text('🔒 This batch has been submitted and is locked from editing.',
+      Expanded(child: Text(
+          '🔒 This batch has been submitted and is locked from editing.',
           style: GoogleFonts.outfit(fontSize: 13, fontWeight: FontWeight.w600,
               color: const Color(0xFF92400E)))),
     ]),
@@ -2451,7 +2456,8 @@ class _OfflineBanner extends StatelessWidget {
     child: Row(children: [
       const Icon(Icons.wifi_off, size: 16, color: Color(0xFFF59E0B)),
       const SizedBox(width: 8),
-      Expanded(child: Text('You are offline. Record will sync when connection restores.',
+      Expanded(child: Text(
+          'You are offline. Record will sync when connection restores.',
           style: GoogleFonts.outfit(fontSize: 13, color: const Color(0xFF92400E)))),
     ]),
   );
@@ -2484,9 +2490,7 @@ class _SubmitBtn extends StatelessWidget {
   );
 }
 
-// ─────────────────────────────────────────────
-// File-level table helpers
-// ─────────────────────────────────────────────
+// ── File-level table helpers ──────────────────────────────────────────────────
 Widget _cardHead(String title, IconData icon, VoidCallback? onAdd) =>
     Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
@@ -2550,14 +2554,18 @@ Widget _tblInput({required TextEditingController controller, String hint = '',
         fontWeight: calcStyle ? FontWeight.w600 : FontWeight.w400,
       ),
       decoration: InputDecoration(
-        hintText: hint, hintStyle: GoogleFonts.outfit(fontSize: 12, color: AppColors.textMuted),
+        hintText: hint,
+        hintStyle: GoogleFonts.outfit(fontSize: 12, color: AppColors.textMuted),
         isDense: true, filled: true,
-        fillColor: calcStyle ? const Color(0xFFEEF6F1) : readOnly ? const Color(0xFFF0F4F2) : AppColors.greenXLight,
+        fillColor: calcStyle ? const Color(0xFFEEF6F1)
+            : readOnly ? const Color(0xFFF0F4F2) : AppColors.greenXLight,
         contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(6),
-            borderSide: BorderSide(color: calcStyle ? const Color(0xFFC8DFD1) : AppColors.border, width: 1.5)),
+            borderSide: BorderSide(
+                color: calcStyle ? const Color(0xFFC8DFD1) : AppColors.border, width: 1.5)),
         enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(6),
-            borderSide: BorderSide(color: calcStyle ? const Color(0xFFC8DFD1) : AppColors.border, width: 1.5)),
+            borderSide: BorderSide(
+                color: calcStyle ? const Color(0xFFC8DFD1) : AppColors.border, width: 1.5)),
         focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(6),
             borderSide: const BorderSide(color: AppColors.green, width: 1.5)),
       ),
@@ -2578,6 +2586,59 @@ Widget _delBtn(VoidCallback onTap) => GestureDetector(onTap: onTap, child: Conta
       borderRadius: BorderRadius.circular(5)),
   child: const Icon(Icons.delete_outline, size: 13, color: AppColors.error),
 ));
+
+// Used by _O2InitialCell / _O2FinalCell (file-level, not inside a class)
+Widget _subLabel(String label, {
+  required String badge, required Color badgeBg, required Color badgeColor, String? note,
+}) =>
+    Wrap(spacing: 5, crossAxisAlignment: WrapCrossAlignment.center, children: [
+      Text(label.toUpperCase(), style: const TextStyle(
+          fontSize: 9.5, fontWeight: FontWeight.w700,
+          color: AppColors.textMuted, letterSpacing: 0.5)),
+      Container(
+        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+        decoration: BoxDecoration(color: badgeBg, borderRadius: BorderRadius.circular(3)),
+        child: Text(badge, style: TextStyle(
+            fontSize: 9, fontWeight: FontWeight.w700, color: badgeColor)),
+      ),
+      if (note != null)
+        Text(note, style: const TextStyle(fontSize: 9, color: AppColors.textMuted)),
+    ]);
+
+// Used by _O2InitialCell for the auto-calc KG display
+Widget _roNumDisplay(double? value) => Container(
+  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+  decoration: BoxDecoration(
+    color: const Color(0xFFEEF6F1),
+    border: Border.all(color: const Color(0xFFC8DFD1), width: 1.5),
+    borderRadius: BorderRadius.circular(8),
+  ),
+  child: Text(value != null ? value.toStringAsFixed(3) : 'Auto',
+      style: GoogleFonts.outfit(
+          fontSize: 13, color: AppColors.green, fontWeight: FontWeight.w600)),
+);
+
+Widget _numFieldO2(TextEditingController ctrl, bool ro,
+    {ValueChanged<String>? onChanged}) =>
+    TextField(
+      controller: ctrl, readOnly: ro, onChanged: onChanged,
+      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      inputFormatters:
+      ro ? null : [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))],
+      style: GoogleFonts.outfit(fontSize: 13, color: AppColors.textDark),
+      decoration: InputDecoration(
+        isDense: true, filled: true, fillColor: AppColors.greenXLight,
+        hintText: '0.000',
+        hintStyle: GoogleFonts.outfit(fontSize: 12, color: AppColors.textMuted),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8),
+            borderSide: const BorderSide(color: AppColors.border, width: 1.5)),
+        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8),
+            borderSide: const BorderSide(color: AppColors.border, width: 1.5)),
+        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8),
+            borderSide: const BorderSide(color: AppColors.green, width: 1.5)),
+      ),
+    );
 
 InputDecoration _dropDec() => InputDecoration(
   isDense: true, filled: true, fillColor: AppColors.greenXLight,

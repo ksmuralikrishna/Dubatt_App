@@ -122,6 +122,7 @@ class _AcidTestingListScreenState extends State<AcidTestingListScreen> {
     await Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => AcidTestingFormScreen(
         recordId: id,
+        embedInShell: false,
         onLogout: widget.onLogout,
       ),
     ));
