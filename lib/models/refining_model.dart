@@ -402,6 +402,7 @@ class RefiningRecord {
   final List<RefiningDross>         drossSummary;
 
   final String? status;
+  final String? remarks;
 
   const RefiningRecord({
     this.id,
@@ -427,6 +428,7 @@ class RefiningRecord {
     this.finishedGoodsSummary = const [],
     this.drossSummary     = const [],
     this.status,
+    this.remarks,
   });
 
   bool get isSubmitted {
@@ -464,6 +466,7 @@ class RefiningRecord {
       drossSummary: (json['dross_summary'] as List? ?? [])
           .map((d) => RefiningDross.fromJson(d)).toList(),
       status: json['status']?.toString(),
+      remarks: json['remarks']?.toString(),
     );
   }
 
@@ -493,6 +496,7 @@ class RefiningRecord {
         .expand((f) => f.outputBlocks.map((b) => b.toJson())).toList(),
     'dross_blocks': drossSummary
         .expand((d) => d.outputBlocks.map((b) => b.toJson())).toList(),
+    'remarks': remarks,
   };
 
   RefiningRecord copyWith({
@@ -519,6 +523,7 @@ class RefiningRecord {
     List<RefiningFinishedGood>? finishedGoodsSummary,
     List<RefiningDross>? drossSummary,
     String? status,
+    String? remarks,
   }) {
     return RefiningRecord(
       id: id ?? this.id,
@@ -544,6 +549,7 @@ class RefiningRecord {
       finishedGoodsSummary: finishedGoodsSummary ?? this.finishedGoodsSummary,
       drossSummary: drossSummary ?? this.drossSummary,
       status: status ?? this.status,
+      remarks: remarks ?? this.remarks,
     );
   }
 

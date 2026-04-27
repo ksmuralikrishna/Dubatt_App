@@ -649,6 +649,7 @@ class _SmeltingFormScreenState extends State<SmeltingFormScreen> {
       'flux_chemicals':      fluxChems,
       'process_details':     procDetails,
       'temperature_records': tempRecs,
+      'remarks' : '',
     };
   }
 
@@ -663,14 +664,16 @@ class _SmeltingFormScreenState extends State<SmeltingFormScreen> {
     if (result.success) {
       _showSnack('Record saved successfully.');
       if (widget.isCreate) {
-        if (result.newId != null) {
-          Navigator.of(context).pushReplacement(MaterialPageRoute(
-            builder: (_) => SmeltingFormScreen(
-                recordId: result.newId, onLogout: widget.onLogout),
-          ));
-        } else {
-          Navigator.of(context).pop();
-        }
+        // if (result.newId != null) {
+        //   Navigator.of(context).pushReplacement(MaterialPageRoute(
+        //     builder: (_) => SmeltingFormScreen(
+        //         recordId: result.newId, onLogout: widget.onLogout),
+        //   ));
+        // } else {
+        //   Navigator.of(context).pop();
+        // }
+        Navigator.of(context).pop(); return;
+
       } else if (result.newId != null) {
         _currentId = result.newId;
       }
@@ -2712,16 +2715,24 @@ class _OutputBlockModalState extends State<_OutputBlockModal> {
     });
   }
 
+  // void _confirm() {
+  //   // Return a fresh list owned by the parent
+  //   final confirmed = _blocks
+  //       .map((b) => _OutputBlock(blockNo: b.blockNo, weight: b.weight))
+  //       .toList();
+  //   // Dispose the modal's copies first
+  //   for (final b in _blocks) b.dispose();
+  //   _blocks = []; // prevent double-dispose in dispose()
+  //   widget.onConfirm(confirmed);
+  //   Navigator.of(context).pop();
+  // }
   void _confirm() {
-    // Return a fresh list owned by the parent
     final confirmed = _blocks
         .map((b) => _OutputBlock(blockNo: b.blockNo, weight: b.weight))
         .toList();
-    // Dispose the modal's copies first
-    for (final b in _blocks) b.dispose();
-    _blocks = []; // prevent double-dispose in dispose()
     widget.onConfirm(confirmed);
     Navigator.of(context).pop();
+    // Let dispose() handle cleanup naturally — don't touch _blocks here
   }
 
   @override

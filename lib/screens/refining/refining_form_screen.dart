@@ -69,6 +69,7 @@ class _RefiningFormScreenState extends State<RefiningFormScreen> {
   final _elecFinalCtrl = TextEditingController();
   final _o2Nm3Ctrl     = TextEditingController();
   final _o2TimeCtrl    = TextEditingController();
+  final _remarksCtrl   = TextEditingController();
 
   // Auto-calculated display strings
   String _lpgConsumed     = '—';
@@ -111,6 +112,7 @@ class _RefiningFormScreenState extends State<RefiningFormScreen> {
     _lpg2InitCtrl.dispose(); _lpg2FinalCtrl.dispose();
     _elecInitCtrl.dispose(); _elecFinalCtrl.dispose();
     _o2Nm3Ctrl.dispose(); _o2TimeCtrl.dispose();
+    _remarksCtrl.dispose();
     for (final r in _rawRows)   r.dispose();
     for (final c in _chemRows)  c.dispose();
     for (final p in _procRows)  p.dispose();
@@ -183,6 +185,7 @@ class _RefiningFormScreenState extends State<RefiningFormScreen> {
     _elecFinalCtrl.text = r.electricityFinal?.toString() ?? '';
     _o2Nm3Ctrl.text     = r.oxygenFlowNm3?.toString() ?? '';
     _o2TimeCtrl.text    = r.oxygenFlowTime?.toString() ?? '';
+    _remarksCtrl.text   = r.remarks ?? '';
     _calcLpg(); _calcLpg2(); _calcElec(); _calcO2();
 
     for (final rm in r.rawMaterials) _addRawRow(data: rm);
@@ -645,6 +648,8 @@ class _RefiningFormScreenState extends State<RefiningFormScreen> {
       'finished_goods_blocks':  fgBlocks,
       'dross_summary':          drossSummary,
       'dross_blocks':           drossBlocks,
+      'remarks':                _remarksCtrl.text.trim().isNotEmpty
+          ? _remarksCtrl.text.trim() : null,
     };
   }
 
@@ -659,14 +664,15 @@ class _RefiningFormScreenState extends State<RefiningFormScreen> {
     if (result.success) {
       _showSnack('Record saved successfully.');
       if (widget.isCreate) {
-        if (result.newId != null) {
-          Navigator.of(context).pushReplacement(MaterialPageRoute(
-            builder: (_) => RefiningFormScreen(
-                recordId: result.newId, onLogout: widget.onLogout),
-          ));
-        } else {
-          Navigator.of(context).pop();
-        }
+        // if (result.newId != null) {
+        //   Navigator.of(context).pushReplacement(MaterialPageRoute(
+        //     builder: (_) => RefiningFormScreen(
+        //         recordId: result.newId, onLogout: widget.onLogout),
+        //   ));
+        // } else {
+        //   Navigator.of(context).pop();
+        // }
+        Navigator.of(context).pop(); return;
       } else if (result.newId != null) {
         _currentId = result.newId;
       }
@@ -974,6 +980,57 @@ class _RefiningFormScreenState extends State<RefiningFormScreen> {
                 }
                 return Column(children: [fg, const SizedBox(height: 16), dross]);
               }),
+
+              _SectionCard(
+                icon: Icons.notes_outlined,
+                title: 'Remarks',
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'REMARKS  •  OPTIONAL',
+                      style: AppTextStyles.label(),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: _remarksCtrl,
+                      readOnly: _isSubmitted,
+                      maxLines: 4,
+                      maxLength: 500,
+                      style: GoogleFonts.outfit(
+                          fontSize: 13.5, color: AppColors.textDark),
+                      decoration: InputDecoration(
+                        hintText: 'Add any notes or observations about this batch…',
+                        hintStyle: GoogleFonts.outfit(
+                            fontSize: 13, color: AppColors.textMuted),
+                        filled: true,
+                        fillColor: _isSubmitted
+                            ? const Color(0xFFF0F4F2)
+                            : AppColors.greenXLight,
+                        counterStyle: GoogleFonts.outfit(
+                            fontSize: 11, color: AppColors.textMuted),
+                        border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: const BorderSide(
+                                color: AppColors.border, width: 1.5)),
+                        enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: const BorderSide(
+                                color: AppColors.border, width: 1.5)),
+                        focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: const BorderSide(
+                                color: AppColors.green, width: 1.5)),
+                        disabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: const BorderSide(
+                                color: AppColors.borderLight, width: 1.5)),
+                        contentPadding: const EdgeInsets.all(14),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
 
               const SizedBox(height: 24),
 
