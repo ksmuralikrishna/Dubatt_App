@@ -58,6 +58,7 @@ class _SmeltingFormScreenState extends State<SmeltingFormScreen> {
   final _idFinalCtrl  = TextEditingController();
   final _rotInitCtrl  = TextEditingController();
   final _rotFinalCtrl = TextEditingController();
+  final _remarksCtrl   = TextEditingController();
   // Display strings for conversions
   String _lpgConverted = '0.00 LTR';
   String _o2Converted  = '0.00 KG';
@@ -113,6 +114,7 @@ class _SmeltingFormScreenState extends State<SmeltingFormScreen> {
     _lpgCtrl.dispose(); _o2Ctrl.dispose();
     _idInitCtrl.dispose(); _idFinalCtrl.dispose();
     _rotInitCtrl.dispose(); _rotFinalCtrl.dispose();
+    _remarksCtrl.dispose();
     // _outputQtyCtrl.dispose(); _chargeCtrl.dispose();
     for (final b in _outputBlocks) b.dispose();
     for (final r in _rawRows)  r.dispose();
@@ -223,13 +225,28 @@ class _SmeltingFormScreenState extends State<SmeltingFormScreen> {
     _calcConsumption('id'); _calcConsumption('rot');
 
     _outputMaterialId = r.outputMaterial;
+    _remarksCtrl.text  = r.remarks ?? '';
     // _outputQtyCtrl.text = r.outputQty != null && r.outputQty! > 0
     //     ? r.outputQty!.toStringAsFixed(3) : '';
     // Load saved blocks, or fall back to 11 empty defaults
+    // if (r.outputBlocks != null && r.outputBlocks!.isNotEmpty) {
+    //   _outputBlocks = r.outputBlocks!.asMap().entries.map((e) {
+    //     final v = e.value['weight_kg'];
+    //     final weight = (v is double) ? v : (v is int) ? v.toDouble() : double.tryParse(v?.toString() ?? '') ?? 0;
+    //     return _OutputBlock(blockNo: e.key + 1, weight: weight);
+    //   }).toList();
+    // }
     if (r.outputBlocks != null && r.outputBlocks!.isNotEmpty) {
       _outputBlocks = r.outputBlocks!.asMap().entries.map((e) {
-        final v = e.value['weight_kg'];
-        final weight = (v is double) ? v : (v is int) ? v.toDouble() : double.tryParse(v?.toString() ?? '') ?? 0;
+        final v = e.value['block_weight'];
+        double weight = 0;
+        if (v != null) {
+          if (v is num) {
+            weight = v.toDouble();          // catches int, double, and num
+          } else {
+            weight = double.tryParse(v.toString()) ?? 0;
+          }
+        }
         return _OutputBlock(blockNo: e.key + 1, weight: weight);
       }).toList();
     } else {
@@ -549,109 +566,117 @@ class _SmeltingFormScreenState extends State<SmeltingFormScreen> {
   }
 
   // ── Build payload ────────────────────────────────────────────────────────────
-  Map<String, dynamic>? _buildPayload() {
-    if (_dateCtrl.text.isEmpty) {
-      _showSnack('Date is required.', error: true); return null;
+    Map<String, dynamic>? _buildPayload() {
+      if (_dateCtrl.text.isEmpty) {
+        _showSnack('Date is required.', error: true); return null;
+      }
+      if (_rotaryNo.isEmpty) {
+        _showSnack('Rotary No is required.', error: true); return null;
+      }
+  
+      final date = _dateCtrl.text.trim();
+  
+      final rawMats = <Map<String, dynamic>>[];
+      for (final r in _rawRows) {
+        if (r.materialId.isEmpty) continue;
+        rawMats.add({
+          'raw_material_id':        r.materialId,
+          'bbsu_batch_id':          r.bbsuSelections.isNotEmpty
+              ? r.bbsuSelections.first.bbsuId : null,
+          'bbsu_batch_no':          r.bbsuSelections.isNotEmpty
+              ? r.bbsuSelections.first.bbsuNo : null,
+          'bbsu_selections':        r.bbsuSelections.map((s) => s.toJson()).toList(),
+          'raw_material_qty':       double.tryParse(r.qtyCtrl.text) ?? 0,
+          'raw_material_yield_pct': double.tryParse(r.yieldCtrl.text) ?? 0,
+          'expected_output_qty':    double.tryParse(r.expCtrl.text) ?? 0,
+        });
+      }
+  
+      final fluxChems = <Map<String, dynamic>>[];
+      for (final f in _fluxRows) {
+        if (f.materialId.isEmpty) continue;
+        fluxChems.add({
+          'chemical_id':    f.materialId,
+          'bbsu_batch_id':  f.bbsuSelections.isNotEmpty
+              ? f.bbsuSelections.first.bbsuId : null,
+          'bbsu_batch_no':  f.bbsuSelections.isNotEmpty
+              ? f.bbsuSelections.first.bbsuNo : null,
+          'bbsu_selections': f.bbsuSelections.map((s) => s.toJson()).toList(),
+          'qty':             double.tryParse(f.qtyCtrl.text) ?? 0,
+        });
+      }
+  
+      // Only include process rows with at least one time set
+      final procDetails = <Map<String, dynamic>>[];
+      for (int i = 0; i < _processRows.length; i++) {
+        final p = _processRows[i];
+        final s = p.startCtrl.text.trim();
+        final e = p.endCtrl.text.trim();
+        if (s.isEmpty && e.isEmpty) continue;
+        procDetails.add({
+          'process_name': p.processName,
+          'start_time': _convertTo24Hour(s),
+          'end_time': _convertTo24Hour(e),
+          'total_time':   p.totalMins,
+          'firing_mode':  p.firingMode.isNotEmpty ? p.firingMode : null,
+        });
+      }
+  
+      final tempRecs = _tempRows.map((t) => {
+        'record_time': t.timeCtrl.text.isNotEmpty
+            ? _convertTo24Hour(t.timeCtrl.text) : null,
+        'inside_temp_before_charging': double.tryParse(t.insideCtrl.text),
+        'process_gas_chamber_temp': t.pgcCtrl.text.trim().isNotEmpty
+            ? t.pgcCtrl.text.trim() : null,
+        'shell_temp': t.shellCtrl.text.trim().isNotEmpty
+            ? t.shellCtrl.text.trim() : null,
+        'bag_house_temp': t.bagCtrl.text.trim().isNotEmpty
+            ? t.bagCtrl.text.trim() : null,
+      }).toList();
+  
+      final idInit   = double.tryParse(_idInitCtrl.text);
+      final idFin    = double.tryParse(_idFinalCtrl.text);
+      final rotInit  = double.tryParse(_rotInitCtrl.text);
+      final rotFin   = double.tryParse(_rotFinalCtrl.text);
+  
+      return {
+        'batch_no':  _batchNoCtrl.text.trim(),
+        'date':      date,
+        'rotary_no': _rotaryNo,
+        'charge_no': _chargeCtrl.text.trim(),
+        'start_time': _convertTo24Hour(_startCtrl.text),
+        'end_time': _convertTo24Hour(_endCtrl.text),
+        'lpg_consumption':         double.tryParse(_lpgCtrl.text),
+        'o2_consumption':          double.tryParse(_o2Ctrl.text),
+        'id_fan_initial':          idInit,
+        'id_fan_final':            idFin,
+        'id_fan_consumption':      (idInit != null && idFin != null && idFin >= idInit)
+            ? idFin - idInit : null,
+        'rotary_power_initial':    rotInit,
+        'rotary_power_final':      rotFin,
+        'rotary_power_consumption': (rotInit != null && rotFin != null && rotFin >= rotInit)
+            ? rotFin - rotInit : null,
+        'output_material': _outputMaterialId,
+        'output_qty':      _outputTotalQty > 0 ? _outputTotalQty : null,
+        'output_blocks': _outputBlocks
+            .where((b) => b.weight > 0)
+            .toList()
+            .asMap()
+            .entries
+            .map((e) => {
+          'material_id': _outputMaterialId,
+          'block_sl_no': e.key + 1,
+          'block_weight': e.value.weight,
+        })
+            .toList(),
+        'raw_materials':       rawMats,
+        'flux_chemicals':      fluxChems,
+        'process_details':     procDetails,
+        'temperature_records': tempRecs,
+        'remarks': _remarksCtrl.text.trim().isNotEmpty
+            ? _remarksCtrl.text.trim() : null,
+      };
     }
-    if (_rotaryNo.isEmpty) {
-      _showSnack('Rotary No is required.', error: true); return null;
-    }
-
-    final date = _dateCtrl.text.trim();
-
-    final rawMats = <Map<String, dynamic>>[];
-    for (final r in _rawRows) {
-      if (r.materialId.isEmpty) continue;
-      rawMats.add({
-        'raw_material_id':        r.materialId,
-        'bbsu_batch_id':          r.bbsuSelections.isNotEmpty
-            ? r.bbsuSelections.first.bbsuId : null,
-        'bbsu_batch_no':          r.bbsuSelections.isNotEmpty
-            ? r.bbsuSelections.first.bbsuNo : null,
-        'bbsu_selections':        r.bbsuSelections.map((s) => s.toJson()).toList(),
-        'raw_material_qty':       double.tryParse(r.qtyCtrl.text) ?? 0,
-        'raw_material_yield_pct': double.tryParse(r.yieldCtrl.text) ?? 0,
-        'expected_output_qty':    double.tryParse(r.expCtrl.text) ?? 0,
-      });
-    }
-
-    final fluxChems = <Map<String, dynamic>>[];
-    for (final f in _fluxRows) {
-      if (f.materialId.isEmpty) continue;
-      fluxChems.add({
-        'chemical_id':    f.materialId,
-        'bbsu_batch_id':  f.bbsuSelections.isNotEmpty
-            ? f.bbsuSelections.first.bbsuId : null,
-        'bbsu_batch_no':  f.bbsuSelections.isNotEmpty
-            ? f.bbsuSelections.first.bbsuNo : null,
-        'bbsu_selections': f.bbsuSelections.map((s) => s.toJson()).toList(),
-        'qty':             double.tryParse(f.qtyCtrl.text) ?? 0,
-      });
-    }
-
-    // Only include process rows with at least one time set
-    final procDetails = <Map<String, dynamic>>[];
-    for (int i = 0; i < _processRows.length; i++) {
-      final p = _processRows[i];
-      final s = p.startCtrl.text.trim();
-      final e = p.endCtrl.text.trim();
-      if (s.isEmpty && e.isEmpty) continue;
-      procDetails.add({
-        'process_name': p.processName,
-        'start_time': _convertTo24Hour(s),
-        'end_time': _convertTo24Hour(e),
-        'total_time':   p.totalMins,
-        'firing_mode':  p.firingMode.isNotEmpty ? p.firingMode : null,
-      });
-    }
-
-    final tempRecs = _tempRows.map((t) => {
-      'record_time': t.timeCtrl.text.isNotEmpty
-          ? _convertTo24Hour(t.timeCtrl.text) : null,
-      'inside_temp_before_charging': double.tryParse(t.insideCtrl.text),
-      'process_gas_chamber_temp': t.pgcCtrl.text.trim().isNotEmpty
-          ? t.pgcCtrl.text.trim() : null,
-      'shell_temp': t.shellCtrl.text.trim().isNotEmpty
-          ? t.shellCtrl.text.trim() : null,
-      'bag_house_temp': t.bagCtrl.text.trim().isNotEmpty
-          ? t.bagCtrl.text.trim() : null,
-    }).toList();
-
-    final idInit   = double.tryParse(_idInitCtrl.text);
-    final idFin    = double.tryParse(_idFinalCtrl.text);
-    final rotInit  = double.tryParse(_rotInitCtrl.text);
-    final rotFin   = double.tryParse(_rotFinalCtrl.text);
-
-    return {
-      'batch_no':  _batchNoCtrl.text.trim(),
-      'date':      date,
-      'rotary_no': _rotaryNo,
-      'charge_no': _chargeCtrl.text.trim(),
-      'start_time': _convertTo24Hour(_startCtrl.text),
-      'end_time': _convertTo24Hour(_endCtrl.text),
-      'lpg_consumption':         double.tryParse(_lpgCtrl.text),
-      'o2_consumption':          double.tryParse(_o2Ctrl.text),
-      'id_fan_initial':          idInit,
-      'id_fan_final':            idFin,
-      'id_fan_consumption':      (idInit != null && idFin != null && idFin >= idInit)
-          ? idFin - idInit : null,
-      'rotary_power_initial':    rotInit,
-      'rotary_power_final':      rotFin,
-      'rotary_power_consumption': (rotInit != null && rotFin != null && rotFin >= rotInit)
-          ? rotFin - rotInit : null,
-      'output_material': _outputMaterialId,
-      'output_qty':      _outputTotalQty > 0 ? _outputTotalQty : null,
-      'output_blocks':   _outputBlocks
-          .where((b) => b.weight > 0)
-          .map((b) => {'block_no': b.blockNo, 'weight_kg': b.weight})
-          .toList(),
-      'raw_materials':       rawMats,
-      'flux_chemicals':      fluxChems,
-      'process_details':     procDetails,
-      'temperature_records': tempRecs,
-      'remarks' : '',
-    };
-  }
 
   // ── Save ─────────────────────────────────────────────────────────────────────
   Future<void> _save() async {
@@ -1111,6 +1136,60 @@ class _SmeltingFormScreenState extends State<SmeltingFormScreen> {
                 onRemove: _isSubmitted ? null : _removeTempRow,
               ),
 
+              const SizedBox(height: 16),
+
+              // ══ SECTION 5 — Remarks ════════════════════════════════
+              _SectionCard(
+                icon: Icons.notes_outlined,
+                title: 'Remarks',
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'REMARKS  •  OPTIONAL',
+                      style: AppTextStyles.label(),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: _remarksCtrl,
+                      readOnly: _isSubmitted,
+                      maxLines: 4,
+                      maxLength: 500,
+                      style: GoogleFonts.outfit(
+                          fontSize: 13.5, color: AppColors.textDark),
+                      decoration: InputDecoration(
+                        hintText:
+                        'Add any notes or observations about this batch…',
+                        hintStyle: GoogleFonts.outfit(
+                            fontSize: 13, color: AppColors.textMuted),
+                        filled: true,
+                        fillColor: _isSubmitted
+                            ? const Color(0xFFF0F4F2)
+                            : AppColors.greenXLight,
+                        counterStyle: GoogleFonts.outfit(
+                            fontSize: 11, color: AppColors.textMuted),
+                        border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: const BorderSide(
+                                color: AppColors.border, width: 1.5)),
+                        enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: const BorderSide(
+                                color: AppColors.border, width: 1.5)),
+                        focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: const BorderSide(
+                                color: AppColors.green, width: 1.5)),
+                        disabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: const BorderSide(
+                                color: AppColors.borderLight, width: 1.5)),
+                        contentPadding: const EdgeInsets.all(14),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
               const SizedBox(height: 24),
 
               // Action buttons

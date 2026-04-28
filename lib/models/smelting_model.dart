@@ -351,6 +351,7 @@ class SmeltingRecord {
   final List<SmeltingProcessDetail> processDetails;
   final List<SmeltingTempRecord> temperatureRecords;
   final String? status;
+  final String? remarks;
 
   const SmeltingRecord({
     this.id,
@@ -376,6 +377,7 @@ class SmeltingRecord {
     this.processDetails = const [],
     this.temperatureRecords = const [],
     this.status,
+    this.remarks,
   });
 
   bool get isSubmitted {
@@ -414,6 +416,7 @@ class SmeltingRecord {
       temperatureRecords: (json['temperature_records'] as List? ?? [])
           .map((t) => SmeltingTempRecord.fromJson(t)).toList(),
       status: json['status']?.toString(),
+      remarks: json['remarks']?.toString(),
     );
   }
 
@@ -440,6 +443,7 @@ class SmeltingRecord {
     'flux_chemicals':          fluxChemicals.map((f) => f.toJson()).toList(),
     'process_details':         processDetails.map((p) => p.toJson()).toList(),
     'temperature_records':     temperatureRecords.map((t) => t.toJson()).toList(),
+    'remarks':                 remarks,
   };
 
   SmeltingRecord copyWith({
@@ -466,6 +470,7 @@ class SmeltingRecord {
     List<SmeltingProcessDetail>? processDetails,
     List<SmeltingTempRecord>? temperatureRecords,
     String? status,
+    String? remarks,
   }) {
     return SmeltingRecord(
       id: id ?? this.id,
@@ -491,6 +496,8 @@ class SmeltingRecord {
       processDetails: processDetails ?? this.processDetails,
       temperatureRecords: temperatureRecords ?? this.temperatureRecords,
       status: status ?? this.status,
+      remarks: remarks ?? this.remarks,
+
     );
   }
 
