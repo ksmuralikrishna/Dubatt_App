@@ -14,11 +14,17 @@ class _NavItemData {
   final String label;
   final String route;
 
+  /// Matches the API "module" field from /auth/me permissions.
+  /// Use 'dashboard' for the always-visible root item.
+  /// Use null for items that have no API key yet (treated as full_access only).
+  final String? permissionKey;
+
   const _NavItemData({
     required this.icon,
     required this.activeIcon,
     required this.label,
     required this.route,
+    required this.permissionKey,
   });
 }
 
@@ -30,9 +36,6 @@ class _NavSection {
 }
 
 // ── Nav tree ────────────────────────────────────────────────────
-// Each module is fully independent at the same level.
-// To add a new module: add a _NavItemData entry here + register
-// its routes in main.dart.
 const _navSections = [
   _NavSection(
     items: [
@@ -41,6 +44,7 @@ const _navSections = [
         activeIcon: Icons.dashboard,
         label: 'Dashboard',
         route: '/dashboard',
+        permissionKey: 'dashboard', // always visible
       ),
     ],
   ),
@@ -52,38 +56,61 @@ const _navSections = [
         activeIcon: Icons.inventory_2,
         label: 'Receiving',
         route: '/receiving',
+        permissionKey: 'receiving',
       ),
       _NavItemData(
         icon: Icons.science_outlined,
         activeIcon: Icons.science,
         label: 'Acid Testing',
         route: '/acid-testing',
+        permissionKey: 'acid_testing',
       ),
       _NavItemData(
         icon: Icons.battery_charging_full_outlined,
         activeIcon: Icons.battery_charging_full,
         label: 'BBSU',
         route: '/bbsu',
+        permissionKey: 'bbsu', // no API key yet → full_access only
       ),
       _NavItemData(
         icon: Icons.local_fire_department_outlined,
         activeIcon: Icons.local_fire_department,
         label: 'Smelting',
         route: '/smelting',
+        permissionKey: 'smelting',
       ),
       _NavItemData(
         icon: Icons.filter_alt_outlined,
         activeIcon: Icons.filter_alt,
         label: 'Refining',
         route: '/refining',
+        permissionKey: 'refining',
       ),
     ],
   ),
 ];
 
-// Flat list of all items — used for mobile drawer
-List<_NavItemData> get _allNavItems =>
-    _navSections.expand((s) => s.items).toList();
+// ── Visible items filtered by the current user's permissions ────
+List<_NavItemData> _visibleItems(AuthService auth) {
+  return _navSections
+      .expand((s) => s.items)
+      .where((item) => auth.canViewModule(item.permissionKey ?? ''))
+      .toList();
+}
+
+// ── Visible sections (drops sections whose items are all hidden) ─
+List<_NavSection> _visibleSections(AuthService auth) {
+  return _navSections
+      .map((section) {
+    final visible = section.items
+        .where((item) => auth.canViewModule(item.permissionKey ?? ''))
+        .toList();
+    if (visible.isEmpty) return null;
+    return _NavSection(title: section.title, items: visible);
+  })
+      .whereType<_NavSection>()
+      .toList();
+}
 
 // ────────────────────────────────────────────────────────────────
 // APP SHELL — entry point, picks tablet or mobile layout
@@ -194,7 +221,7 @@ class _TabletShell extends StatefulWidget {
 class _TabletShellState extends State<_TabletShell> {
   bool _collapsed = false;
 
-  static const double _expandedWidth  = 220.0;
+  static const double _expandedWidth = 220.0;
   static const double _collapsedWidth = 60.0;
 
   @override
@@ -211,8 +238,7 @@ class _TabletShellState extends State<_TabletShell> {
               collapsed: _collapsed,
               onNavigate: widget.onNavigate,
               onToggle: () => setState(() => _collapsed = !_collapsed),
-              onLogout: () =>
-                  _confirmLogout(context, widget.onLogout),
+              onLogout: () => _confirmLogout(context, widget.onLogout),
             ),
           ),
           Expanded(
@@ -246,12 +272,12 @@ class _Sidebar extends StatelessWidget {
     required this.onLogout,
   });
 
-  bool _isActive(_NavItemData item) =>
-      currentRoute.startsWith(item.route);
+  bool _isActive(_NavItemData item) => currentRoute.startsWith(item.route);
 
   @override
   Widget build(BuildContext context) {
     final auth = AuthService();
+    final sections = _visibleSections(auth); // ← permission-filtered
 
     return Container(
       color: AppColors.greenDark,
@@ -260,211 +286,202 @@ class _Sidebar extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // ── Header: hamburger + logo ─────────────────────────
+            Container(
+              height: 64,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: Row(
+                children: [
+                  GestureDetector(
+                    onTap: onToggle,
+                    child: Container(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.08),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(Icons.menu,
+                          color: Colors.white, size: 18),
+                    ),
+                  ),
+                  if (!collapsed) ...[
+                    const SizedBox(width: 10),
+                    Container(
+                      width: 28,
+                      height: 28,
+                      decoration: BoxDecoration(
+                        color: AppColors.green,
+                        borderRadius: BorderRadius.circular(7),
+                      ),
+                      child: const Icon(Icons.factory_outlined,
+                          color: Colors.white, size: 15),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Dubatt Nexus',
+                              style: GoogleFonts.outfit(
+                                color: Colors.white,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                              )),
+                          Text('Manufacturing',
+                              style: GoogleFonts.outfit(
+                                color: Colors.white.withOpacity(0.5),
+                                fontSize: 10,
+                              )),
+                        ],
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
 
-          // ── Header: hamburger + logo ───────────────────────────
-          Container(
-            height: 64,
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: Row(
-              children: [
-                // Hamburger toggle
-                GestureDetector(
-                  onTap: onToggle,
-                  child: Container(
-                    width: 36,
-                    height: 36,
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.08),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Icon(Icons.menu,
-                        color: Colors.white, size: 18),
-                  ),
-                ),
-                if (!collapsed) ...[
-                  const SizedBox(width: 10),
-                  Container(
-                    width: 28,
-                    height: 28,
-                    decoration: BoxDecoration(
-                      color: AppColors.green,
-                      borderRadius: BorderRadius.circular(7),
-                    ),
-                    child: const Icon(Icons.factory_outlined,
-                        color: Colors.white, size: 15),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
+            Divider(color: Colors.white.withOpacity(0.1), height: 1),
+
+            // ── Nav sections (permission-filtered) ───────────────
+            Expanded(
+              child: SingleChildScrollView(
+                padding:
+                const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: sections.map((section) {
+                    return Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Dubatt Nexus',
-                            style: GoogleFonts.outfit(
-                              color: Colors.white,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700,
-                            )),
-                        Text('Manufacturing',
-                            style: GoogleFonts.outfit(
-                              color: Colors.white.withOpacity(0.5),
-                              fontSize: 10,
-                            )),
+                        if (section.title != null && !collapsed)
+                          Padding(
+                            padding:
+                            const EdgeInsets.fromLTRB(10, 14, 10, 6),
+                            child: Text(
+                              section.title!.toUpperCase(),
+                              style: GoogleFonts.outfit(
+                                color: Colors.white.withOpacity(0.35),
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: 1.1,
+                              ),
+                            ),
+                          )
+                        else if (section.title != null && collapsed)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(
+                                vertical: 8, horizontal: 10),
+                            child: Divider(
+                              color: Colors.white.withOpacity(0.15),
+                              height: 1,
+                            ),
+                          ),
+                        ...section.items.map((item) => _NavItem(
+                          data: item,
+                          isActive: _isActive(item),
+                          collapsed: collapsed,
+                          onTap: () {
+                            if (!currentRoute.startsWith(item.route)) {
+                              if (onNavigate != null) {
+                                onNavigate!(item.route);
+                              } else {
+                                Navigator.of(context)
+                                    .pushReplacementNamed(item.route);
+                              }
+                            }
+                          },
+                        )),
+                      ],
+                    );
+                  }).toList(),
+                ),
+              ),
+            ),
+
+            // ── Connection status ────────────────────────────────
+            if (!collapsed)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 7,
+                      height: 7,
+                      decoration: const BoxDecoration(
+                        color: Color(0xFF4ade80),
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 7),
+                    Text('Connected',
+                        style: GoogleFonts.outfit(
+                          color: Colors.white.withOpacity(0.55),
+                          fontSize: 11,
+                        )),
+                  ],
+                ),
+              ),
+
+            Divider(color: Colors.white.withOpacity(0.1), height: 1),
+
+            // ── User row + logout ────────────────────────────────
+            Padding(
+              padding: EdgeInsets.all(collapsed ? 10 : 14),
+              child: collapsed
+                  ? Tooltip(
+                message: 'Log out',
+                child: GestureDetector(
+                  onTap: onLogout,
+                  child: _avatar(auth, size: 36),
+                ),
+              )
+                  : Row(
+                children: [
+                  _avatar(auth, size: 32),
+                  const SizedBox(width: 9),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          auth.userName,
+                          style: GoogleFonts.outfit(
+                            color: Colors.white,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        Text(
+                          auth.userRole,
+                          style: GoogleFonts.outfit(
+                            color: Colors.white.withOpacity(0.55),
+                            fontSize: 10,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ],
                     ),
                   ),
-                ],
-              ],
-            ),
-          ),
-
-          Divider(color: Colors.white.withOpacity(0.1), height: 1),
-
-          // ── Nav sections ───────────────────────────────────────
-          Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(
-                  vertical: 8, horizontal: 6),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: _navSections.map((section) {
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Section header — hidden when collapsed
-                      if (section.title != null && !collapsed)
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(
-                              10, 14, 10, 6),
-                          child: Text(
-                            section.title!.toUpperCase(),
-                            style: GoogleFonts.outfit(
-                              color: Colors.white.withOpacity(0.35),
-                              fontSize: 10,
-                              fontWeight: FontWeight.w700,
-                              letterSpacing: 1.1,
-                            ),
-                          ),
-                        )
-                      else if (section.title != null && collapsed)
-                      // Thin divider line between sections when collapsed
-                        Padding(
-                          padding: const EdgeInsets.symmetric(
-                              vertical: 8, horizontal: 10),
-                          child: Divider(
-                            color: Colors.white.withOpacity(0.15),
-                            height: 1,
-                          ),
-                        ),
-
-                      // Nav items in this section
-                      ...section.items.map((item) => _NavItem(
-                        data: item,
-                        isActive: _isActive(item),
-                        collapsed: collapsed,
-                        onTap: () {
-                          if (!currentRoute
-                              .startsWith(item.route)) {
-                            if (onNavigate != null) {
-                              onNavigate!(item.route);
-                            } else {
-                              Navigator.of(context)
-                                  .pushReplacementNamed(item.route);
-                            }
-                          }
-                        },
-                      )),
-                    ],
-                  );
-                }).toList(),
-              ),
-            ),
-          ),
-
-          // ── Connection status ──────────────────────────────────
-          if (!collapsed)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
-              child: Row(
-                children: [
-                  Container(
-                    width: 7,
-                    height: 7,
-                    decoration: const BoxDecoration(
-                      color: Color(0xFF4ade80),
-                      shape: BoxShape.circle,
+                  GestureDetector(
+                    onTap: onLogout,
+                    child: Tooltip(
+                      message: 'Log out',
+                      child: Icon(
+                        Icons.logout,
+                        size: 17,
+                        color: Colors.white.withOpacity(0.65),
+                      ),
                     ),
                   ),
-                  const SizedBox(width: 7),
-                  Text('Connected',
-                      style: GoogleFonts.outfit(
-                        color: Colors.white.withOpacity(0.55),
-                        fontSize: 11,
-                      )),
                 ],
               ),
             ),
-
-          Divider(color: Colors.white.withOpacity(0.1), height: 1),
-
-          // ── User row + logout ──────────────────────────────────
-          Padding(
-            padding: EdgeInsets.all(collapsed ? 10 : 14),
-            child: collapsed
-                ? Tooltip(
-              message: 'Log out',
-              child: GestureDetector(
-                onTap: onLogout,
-                child: _avatar(auth, size: 36),
-              ),
-            )
-                : Row(
-              children: [
-                _avatar(auth, size: 32),
-                const SizedBox(width: 9),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment:
-                    CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        auth.userName,
-                        style: GoogleFonts.outfit(
-                          color: Colors.white,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      Text(
-                        auth.userRole,
-                        style: GoogleFonts.outfit(
-                          color:
-                          Colors.white.withOpacity(0.55),
-                          fontSize: 10,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ),
-                ),
-                GestureDetector(
-                  onTap: onLogout,
-                  child: Tooltip(
-                    message: 'Log out',
-                    child: Icon(
-                      Icons.logout,
-                      size: 17,
-                      color: Colors.white.withOpacity(0.65),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
-    ),
     );
   }
 
@@ -510,7 +527,6 @@ class _NavItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Tooltip(
-      // Show label as tooltip only when collapsed
       message: collapsed ? data.label : '',
       preferBelow: false,
       child: GestureDetector(
@@ -583,36 +599,35 @@ class _MobileShell extends StatelessWidget {
     this.onNavigate,
   });
 
-  // Bottom nav only shows Dashboard + currently active module
-  // All other modules are reachable via the hamburger drawer
-  int get _bottomIndex {
+  int _bottomIndex(List<_NavItemData> items) {
     if (currentRoute == '/dashboard') return 0;
-    return 1; // any module tab shows as active
+    return 1;
   }
 
   @override
   Widget build(BuildContext context) {
     final auth = AuthService();
+    final sections = _visibleSections(auth); // ← permission-filtered
+    final allVisible = _visibleItems(auth);
 
-    // Find which module is currently active for the bottom label
-    final activeModule = _allNavItems.firstWhere(
+    // Find active module for bottom nav label
+    final activeModule = allVisible.firstWhere(
           (item) =>
-      item.route != '/dashboard' &&
-          currentRoute.startsWith(item.route),
-      orElse: () => _allNavItems
-          .firstWhere((item) => item.route == '/receiving'),
+      item.route != '/dashboard' && currentRoute.startsWith(item.route),
+      orElse: () => allVisible.firstWhere(
+            (item) => item.route != '/dashboard',
+        orElse: () => allVisible.first,
+      ),
     );
 
     return Scaffold(
       appBar: AppBar(
         backgroundColor: AppColors.greenDark,
         elevation: 0,
-        // Hamburger opens the modules drawer
         leading: Builder(
           builder: (ctx) => GestureDetector(
             onTap: () => Scaffold.of(ctx).openDrawer(),
-            child: const Icon(Icons.menu,
-                color: Colors.white, size: 22),
+            child: const Icon(Icons.menu, color: Colors.white, size: 22),
           ),
         ),
         title: Text(
@@ -651,14 +666,13 @@ class _MobileShell extends StatelessWidget {
         ],
       ),
 
-      // ── Drawer — all modules listed with section headers ───────
+      // ── Drawer — permission-filtered sections ──────────────────
       drawer: Drawer(
         backgroundColor: AppColors.greenDark,
         child: SafeArea(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Drawer header
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
                 child: Row(
@@ -683,18 +697,16 @@ class _MobileShell extends StatelessWidget {
                   ],
                 ),
               ),
-              Divider(
-                  color: Colors.white.withOpacity(0.1), height: 1),
+              Divider(color: Colors.white.withOpacity(0.1), height: 1),
               const SizedBox(height: 8),
 
-              // Nav sections
               Expanded(
                 child: SingleChildScrollView(
                   padding: const EdgeInsets.symmetric(
                       horizontal: 8, vertical: 4),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
-                    children: _navSections.map((section) {
+                    children: sections.map((section) {
                       return Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -705,8 +717,7 @@ class _MobileShell extends StatelessWidget {
                               child: Text(
                                 section.title!.toUpperCase(),
                                 style: GoogleFonts.outfit(
-                                  color:
-                                  Colors.white.withOpacity(0.35),
+                                  color: Colors.white.withOpacity(0.35),
                                   fontSize: 10,
                                   fontWeight: FontWeight.w700,
                                   letterSpacing: 1.1,
@@ -718,32 +729,28 @@ class _MobileShell extends StatelessWidget {
                             currentRoute.startsWith(item.route);
                             return GestureDetector(
                               onTap: () {
-                                Navigator.of(context)
-                                    .pop(); // close drawer
+                                Navigator.of(context).pop();
                                 if (!currentRoute
                                     .startsWith(item.route)) {
                                   if (onNavigate != null) {
                                     onNavigate!(item.route);
                                   } else {
                                     Navigator.of(context)
-                                        .pushReplacementNamed(
-                                        item.route);
+                                        .pushReplacementNamed(item.route);
                                   }
                                 }
                               },
                               child: AnimatedContainer(
                                 duration:
                                 const Duration(milliseconds: 140),
-                                margin:
-                                const EdgeInsets.only(bottom: 2),
+                                margin: const EdgeInsets.only(bottom: 2),
                                 padding: const EdgeInsets.symmetric(
                                     horizontal: 12, vertical: 11),
                                 decoration: BoxDecoration(
                                   color: isActive
                                       ? Colors.white
                                       : Colors.transparent,
-                                  borderRadius:
-                                  BorderRadius.circular(8),
+                                  borderRadius: BorderRadius.circular(8),
                                 ),
                                 child: Row(
                                   children: [
@@ -754,8 +761,7 @@ class _MobileShell extends StatelessWidget {
                                       size: 17,
                                       color: isActive
                                           ? AppColors.greenDark
-                                          : Colors.white
-                                          .withOpacity(0.7),
+                                          : Colors.white.withOpacity(0.7),
                                     ),
                                     const SizedBox(width: 10),
                                     Text(
@@ -783,9 +789,7 @@ class _MobileShell extends StatelessWidget {
                 ),
               ),
 
-              // User + logout at bottom of drawer
-              Divider(
-                  color: Colors.white.withOpacity(0.1), height: 1),
+              Divider(color: Colors.white.withOpacity(0.1), height: 1),
               Padding(
                 padding: const EdgeInsets.all(14),
                 child: Row(
@@ -835,7 +839,7 @@ class _MobileShell extends StatelessWidget {
                     ),
                     GestureDetector(
                       onTap: () {
-                        Navigator.of(context).pop(); // close drawer
+                        Navigator.of(context).pop();
                         _confirmLogout(context, onLogout);
                       },
                       child: Tooltip(
@@ -855,8 +859,10 @@ class _MobileShell extends StatelessWidget {
 
       body: child,
 
-      // ── Bottom nav: Dashboard + active module ──────────────────
-      bottomNavigationBar: Container(
+      // ── Bottom nav: Dashboard + active visible module ──────────
+      bottomNavigationBar: allVisible.length <= 1
+          ? null // only Dashboard visible — no point showing bottom nav
+          : Container(
         decoration: BoxDecoration(
           color: AppColors.white,
           boxShadow: [
@@ -868,7 +874,7 @@ class _MobileShell extends StatelessWidget {
           ],
         ),
         child: BottomNavigationBar(
-          currentIndex: _bottomIndex,
+          currentIndex: _bottomIndex(allVisible),
           backgroundColor: AppColors.white,
           selectedItemColor: AppColors.green,
           unselectedItemColor: AppColors.textMuted,
@@ -883,7 +889,6 @@ class _MobileShell extends StatelessWidget {
               activeIcon: Icon(Icons.dashboard),
               label: 'Dashboard',
             ),
-            // Second tab dynamically shows the active module
             BottomNavigationBarItem(
               icon: Icon(activeModule.icon),
               activeIcon: Icon(activeModule.activeIcon),
@@ -899,7 +904,6 @@ class _MobileShell extends StatelessWidget {
                     .pushReplacementNamed('/dashboard');
               }
             }
-            // Tap on module tab just stays — use drawer to switch modules
           },
         ),
       ),
