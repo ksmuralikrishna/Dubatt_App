@@ -561,12 +561,8 @@ class _BbsuFormScreenState extends State<BbsuFormScreen> {
                     Expanded(child: MesTextField(label: 'Doc No', controller: _docNoCtrl,
                         readOnly: true, prefixIcon: Icons.description_outlined, badge: 'AUTO')),
                     const SizedBox(width: 16),
-                    Expanded(child: GestureDetector(
-                      onTap: _isSubmitted ? null : _pickDate,
-                      child: AbsorbPointer(absorbing: _isSubmitted,
-                          child: MesTextField(label: 'Date *', controller: _dateCtrl,
-                              readOnly: true, prefixIcon: Icons.calendar_today_outlined)),
-                    )),
+                    Expanded(child: MesTextField(label: 'Date *', controller: _dateCtrl,
+                              readOnly: true, onTap: _isSubmitted ? null : _pickDate, prefixIcon: Icons.calendar_today_outlined)),
                     const SizedBox(width: 16),
                     Expanded(child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -595,19 +591,11 @@ class _BbsuFormScreenState extends State<BbsuFormScreen> {
                   ]),
                   const SizedBox(height: 16),
                   Row(children: [
-                    Expanded(child: GestureDetector(
-                      onTap: _isSubmitted ? null : () => _pickDateTime(_startCtrl),
-                      child: AbsorbPointer(absorbing: true,
-                          child: MesTextField(label: 'Start Time *', controller: _startCtrl,
-                              readOnly: true, prefixIcon: Icons.schedule_outlined)),
-                    )),
+                    Expanded(child: MesTextField(label: 'Start Time *', controller: _startCtrl,
+                              readOnly: true, onTap: _isSubmitted ? null : () => _pickDateTime(_startCtrl), prefixIcon: Icons.schedule_outlined)),
                     const SizedBox(width: 16),
-                    Expanded(child: GestureDetector(
-                      onTap: _isSubmitted ? null : () => _pickDateTime(_endCtrl),
-                      child: AbsorbPointer(absorbing: true,
-                          child: MesTextField(label: 'End Time *', controller: _endCtrl,
-                              readOnly: true, prefixIcon: Icons.schedule_outlined)),
-                    )),
+                    Expanded(child: MesTextField(label: 'End Time *', controller: _endCtrl,
+                              readOnly: true, onTap: _isSubmitted ? null : () => _pickDateTime(_endCtrl), prefixIcon: Icons.schedule_outlined)),
                     const Expanded(child: SizedBox.shrink()),
                   ]),
                 ]),

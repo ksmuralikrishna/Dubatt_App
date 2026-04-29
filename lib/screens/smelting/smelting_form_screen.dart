@@ -573,9 +573,12 @@ class _SmeltingFormScreenState extends State<SmeltingFormScreen> {
       if (_rotaryNo.isEmpty) {
         _showSnack('Rotary No is required.', error: true); return null;
       }
-  
+      if (_chargeCtrl.text.isEmpty) {
+        _showSnack('Charge No is required.', error: true); return null;
+      }
+
       final date = _dateCtrl.text.trim();
-  
+
       final rawMats = <Map<String, dynamic>>[];
       for (final r in _rawRows) {
         if (r.materialId.isEmpty) continue;
@@ -591,7 +594,7 @@ class _SmeltingFormScreenState extends State<SmeltingFormScreen> {
           'expected_output_qty':    double.tryParse(r.expCtrl.text) ?? 0,
         });
       }
-  
+
       final fluxChems = <Map<String, dynamic>>[];
       for (final f in _fluxRows) {
         if (f.materialId.isEmpty) continue;
@@ -605,7 +608,7 @@ class _SmeltingFormScreenState extends State<SmeltingFormScreen> {
           'qty':             double.tryParse(f.qtyCtrl.text) ?? 0,
         });
       }
-  
+
       // Only include process rows with at least one time set
       final procDetails = <Map<String, dynamic>>[];
       for (int i = 0; i < _processRows.length; i++) {
@@ -621,7 +624,7 @@ class _SmeltingFormScreenState extends State<SmeltingFormScreen> {
           'firing_mode':  p.firingMode.isNotEmpty ? p.firingMode : null,
         });
       }
-  
+
       final tempRecs = _tempRows.map((t) => {
         'record_time': t.timeCtrl.text.isNotEmpty
             ? _convertTo24Hour(t.timeCtrl.text) : null,
@@ -633,12 +636,12 @@ class _SmeltingFormScreenState extends State<SmeltingFormScreen> {
         'bag_house_temp': t.bagCtrl.text.trim().isNotEmpty
             ? t.bagCtrl.text.trim() : null,
       }).toList();
-  
+
       final idInit   = double.tryParse(_idInitCtrl.text);
       final idFin    = double.tryParse(_idFinalCtrl.text);
       final rotInit  = double.tryParse(_rotInitCtrl.text);
       final rotFin   = double.tryParse(_rotFinalCtrl.text);
-  
+
       return {
         'batch_no':  _batchNoCtrl.text.trim(),
         'date':      date,
@@ -864,13 +867,10 @@ class _SmeltingFormScreenState extends State<SmeltingFormScreen> {
                         controller: _batchNoCtrl, readOnly: true,
                         prefixIcon: Icons.description_outlined, badge: 'AUTO')),
                     const SizedBox(width: 16),
-                    Expanded(child: GestureDetector(
-                      onTap: _isSubmitted ? null : _pickDate,
-                      child: AbsorbPointer(absorbing: _isSubmitted,
-                          child: MesTextField(label: 'Date *',
+                    Expanded(child: MesTextField(label: 'Date *',
                               controller: _dateCtrl, readOnly: true,
+                              onTap: _isSubmitted ? null : _pickDate,
                               prefixIcon: Icons.calendar_today_outlined)),
-                    )),
                     const SizedBox(width: 16),
                     Expanded(child: _DropField(
                       label: 'Rotary No *',
@@ -885,19 +885,11 @@ class _SmeltingFormScreenState extends State<SmeltingFormScreen> {
                   ]),
                   const SizedBox(height: 16),
                   Row(children: [
-                    Expanded(child: GestureDetector(
-                      onTap: _isSubmitted ? null : () => _pickTime(_startCtrl),
-                      child: AbsorbPointer(absorbing: true,
-                          child: MesTextField(label: 'Start Time', controller: _startCtrl,
-                              readOnly: true, prefixIcon: Icons.schedule_outlined)),
-                    )),
+                    Expanded(child: MesTextField(label: 'Start Time', controller: _startCtrl,
+                              readOnly: true, onTap: _isSubmitted ? null : () => _pickTime(_startCtrl), prefixIcon: Icons.schedule_outlined)),
                     const SizedBox(width: 16),
-                    Expanded(child: GestureDetector(
-                      onTap: _isSubmitted ? null : () => _pickTime(_endCtrl),
-                      child: AbsorbPointer(absorbing: true,
-                          child: MesTextField(label: 'End Time', controller: _endCtrl,
-                              readOnly: true, prefixIcon: Icons.schedule_outlined)),
-                    )),
+                    Expanded(child: MesTextField(label: 'End Time', controller: _endCtrl,
+                              readOnly: true, onTap: _isSubmitted ? null : () => _pickTime(_endCtrl), prefixIcon: Icons.schedule_outlined)),
                     const SizedBox(width: 16),
                     Expanded(
                       child: MesTextField(

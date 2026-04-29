@@ -158,6 +158,7 @@ class MesTextField extends StatelessWidget {
   final String? badge;
   final Color? badgeColor;
   final List<TextInputFormatter>? inputFormatters;
+  final VoidCallback? onTap;
 
   const MesTextField({
     super.key,
@@ -175,6 +176,7 @@ class MesTextField extends StatelessWidget {
     this.badge,
     this.badgeColor,
     this.inputFormatters,
+    this.onTap,
   });
 
   @override
@@ -186,7 +188,8 @@ class MesTextField extends StatelessWidget {
         const SizedBox(height: 7),
         TextFormField(
           controller: controller,
-          readOnly: false,
+          readOnly: readOnly,
+          onTap: onTap,
           onChanged: onChanged,
           keyboardType: keyboardType,
           maxLines: maxLines,

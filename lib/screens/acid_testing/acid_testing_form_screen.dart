@@ -446,14 +446,15 @@ class _AcidTestingFormScreenState
     if (result.success) {
       _showSnack('Record saved successfully.');
       if (widget.isCreate && result.newId != null) {
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(
-            builder: (_) => AcidTestingFormScreen(
-              recordId: result.newId,
-              onLogout: widget.onLogout,
-            ),
-          ),
-        );
+        // Navigator.of(context).pushReplacement(
+        //   MaterialPageRoute(
+        //     builder: (_) => AcidTestingFormScreen(
+        //       recordId: result.newId,
+        //       onLogout: widget.onLogout,
+        //     ),
+        //   ),
+        // );
+        Navigator.of(context).pop(); return;
       }
     } else {
       _showSnack(result.errorMsg ?? 'Save failed.', error: true);
@@ -687,20 +688,12 @@ class _AcidTestingFormScreenState
                     Row(
                       children: [
                         Expanded(
-                          child: GestureDetector(
-                            onTap: _isSubmitted
-                                ? null
-                                : _pickDate,
-                            child: AbsorbPointer(
-                              absorbing: _isSubmitted,
-                              child: MesTextField(
-                                label: 'Date *',
-                                controller: _dateCtrl,
-                                readOnly: true,
-                                prefixIcon: Icons
-                                    .calendar_today_outlined,
-                              ),
-                            ),
+                          child: MesTextField(
+                            label: 'Date *',
+                            controller: _dateCtrl,
+                            readOnly: true,
+                            onTap: _isSubmitted ? null : _pickDate,
+                            prefixIcon: Icons.calendar_today_outlined,
                           ),
                         ),
                         const SizedBox(width: 16),
