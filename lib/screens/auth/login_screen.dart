@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../../services/sync_service.dart';
 import '../../theme/app_theme.dart';
 import '../../services/auth_service.dart';
 
@@ -55,13 +56,22 @@ class _LoginScreenState extends State<LoginScreen>
       _passwordCtrl.text,
     );
 
-    if (!mounted) return;
-    setState(() => _isLoading = false);
-
     if (result.success) {
+      // ✅ Fetch master data immediately after login so dashboard counts & dropdowns work
+      try {
+        await SyncService().downloadMasterData();
+      } catch (_) {
+        // Non-fatal, login was still successful
+      }
+      
+      if (!mounted) return;
+      setState(() => _isLoading = false);
       widget.onLoginSuccess();
     } else {
-      setState(() => _errorMessage = result.error);
+      setState(() {
+        _isLoading = false;
+        _errorMessage = result.error;
+      });
     }
   }
 

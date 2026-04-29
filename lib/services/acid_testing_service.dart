@@ -43,28 +43,47 @@ class AcidTestingService {
   // Offline → serve from acid_lot_cache table
 
   Future<List<LotOption>> getAvailableLots() async {
+    List<LotOption> options;
     if (!ConnectivityService().isOnline) {
-      return LocalDbService().getCachedAcidLots();
-    }
-    try {
-      final res = await http
-          .get(
-        Uri.parse('$kBaseUrl/acid-testings/available-lots'),
-        headers: _headers,
-      )
-          .timeout(const Duration(seconds: 10));
+      options = await LocalDbService().getCachedAcidLots();
+    } else {
+      try {
+        final res = await http
+            .get(
+          Uri.parse('$kBaseUrl/acid-testings/available-lots'),
+          headers: _headers,
+        )
+            .timeout(const Duration(seconds: 10));
 
-      if (res.statusCode == 200) {
-        final body = jsonDecode(res.body);
-        final list = (body['data'] ?? []) as List;
-        final options = list.map((j) => LotOption.fromJson(j)).toList();
-        await LocalDbService().cacheAcidLots(options);
-        return options;
+        if (res.statusCode == 200) {
+          final body = jsonDecode(res.body);
+          final list = (body['data'] ?? []) as List;
+          options = list.map((j) => LotOption.fromJson(j)).toList();
+          await LocalDbService().cacheAcidLots(options);
+        } else {
+          options = await LocalDbService().getCachedAcidLots();
+        }
+      } catch (_) {
+        options = await LocalDbService().getCachedAcidLots();
       }
-      return await LocalDbService().getCachedAcidLots();
-    } catch (_) {
-      return await LocalDbService().getCachedAcidLots();
     }
+
+    // ✅ Requirement: Remove lot numbers that are currently in the sync queue (pending creation)
+    try {
+      final queued = await LocalDbService().getQueuedAcidTestings();
+      final pendingLots = queued
+          .map((q) => q['payload']['lot_number']?.toString())
+          .whereType<String>()
+          .toSet();
+
+      if (pendingLots.isNotEmpty) {
+        options = options.where((opt) => !pendingLots.contains(opt.lotNo)).toList();
+      }
+    } catch (_) {
+      // Ignore filtering errors
+    }
+
+    return options;
   }
 
   // ── List ────────────────────────────────────────────────────────────────────

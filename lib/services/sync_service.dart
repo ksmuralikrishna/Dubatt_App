@@ -55,9 +55,6 @@ class SyncService {
     // BBSU: available lots + acid summary per lot (for qty modal offline)
     final bbsu = BbsuService();
     await bbsu.getAvailableLots(); // caches bbsu_lot_cache
-    // await bbsu.preloadAcidSummariesForLots(
-    //   bbsuLots.map((l) => l.lotNumber).toList(),
-    // );
     await bbsu.preloadAllAcidSummariesForLots();
 
 

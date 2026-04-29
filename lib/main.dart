@@ -38,7 +38,10 @@ void main() async {
   await AuthService().init();
   await LocalDbService().init();
   await ConnectivityService().init();
-  await SyncService().downloadMasterData();
+  
+  if (AuthService().isAuthenticated) {
+    await SyncService().downloadMasterData();
+  }
 
   AppSyncManager().init();
 

@@ -187,7 +187,7 @@ class _ReceivingFormScreenState extends State<ReceivingFormScreen> {
 
     if (result.success) {
       _showSnack('Record saved successfully.');
-      if (widget.isCreate && result.newId != null) {
+      if (widget.isCreate) {
         // Navigator.of(context).pushReplacement(MaterialPageRoute(
         //   builder: (_) => ReceivingFormScreen(
         //     recordId: result.newId,
